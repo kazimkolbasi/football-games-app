@@ -107,11 +107,32 @@
     }
     .col-head .goals-head { padding-right: 4px; }
 
+    /* ---------- Top bar with back button (home menu comes later) ---------- */
+    .topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      padding: 2px 2px 8px;
+      margin-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .back-btn:active { opacity: 0.55; }
+
     /* ---------- The five answer boxes ---------- */
     .slots {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       margin-bottom: 8px;
       flex: 1 1 auto;    /* the rows absorb the leftover screen height */
       min-height: 0;
@@ -123,9 +144,9 @@
       gap: 12px;
       background: var(--box-empty);
       border: 2px dashed rgba(255, 255, 255, 0.3);
-      border-radius: 12px;
-      padding: 5px 16px;
-      min-height: 34px;
+      border-radius: 11px;
+      padding: 3px 16px;
+      min-height: 30px;
       flex: 1 1 0;       /* each row shares the space equally */
       transition: background 0.25s ease, border 0.25s ease;
     }
@@ -277,7 +298,8 @@
     .key:active { background: var(--gold); transform: scale(0.92); }
     .key.special { background: #41524d; color: #fff; font-size: 13px; font-weight: 600; }
     .key.special:active { background: var(--gold); color: var(--text-dark); transform: scale(0.95); }
-    .key.wide { flex: 1.6; }
+    .key.wide { flex: 1.5; }
+    .key.spacebar { flex: 2.2; }
     @keyframes shake {
       0%, 100% { transform: translateX(0); }
       20% { transform: translateX(-8px); }
@@ -387,6 +409,12 @@
 </head>
 <body>
   <main class="game">
+    <div class="topbar">
+      <button class="back-btn" id="backBtn" aria-label="Back">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+    </div>
+
     <header>
       <span class="badge">Name the Top 5</span>
       <h1 id="title">Players With the Most Champions League Goals</h1>
@@ -608,7 +636,7 @@
     const KEY_ROWS = [
       ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
       ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
-      ["z", "x", "c", "v", "b", "n", "m", "del"],
+      ["space", "z", "x", "c", "v", "b", "n", "m", "del"],
     ];
     function buildKeyboard() {
       keyboardEl.innerHTML = "";
@@ -620,6 +648,7 @@
           const key = document.createElement("div");
           key.className = "key";
           if (k === "del") { key.classList.add("special", "wide"); key.textContent = "delete"; }
+          else if (k === "space") { key.classList.add("special", "spacebar"); key.textContent = "space"; }
           else { key.textContent = k; }
           key.addEventListener("click", () => pressKey(k));
           rowEl.appendChild(key);
@@ -630,6 +659,7 @@
     function pressKey(k) {
       if (finished) return;
       if (k === "del") query = query.slice(0, -1);
+      else if (k === "space") { if (query && !query.endsWith(" ")) query += " "; }
       else if (query.length < 24) query += k;
       renderQuery();
     }
