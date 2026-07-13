@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- This line makes the page fit nicely on a phone screen -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Name the Top 5 — Football Trivia</title>
+  <style>
+    /* ---------- Colours & basic look ---------- */
+    :root {
+      --pitch: #0b6e4f;
+      --pitch-dark: #094c37;
+      --gold: #ffd54a;
+      --box: #ffffff;
+      --box-empty: rgba(255, 255, 255, 0.12);
+      --text-dark: #10241c;
+      --correct: #2e7d32;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      padding: 24px 16px 48px;
+    }
+
+    .game { width: 100%; max-width: 520px; }
+
+    header { text-align: center; margin-bottom: 18px; }
+
+    .badge {
+      display: inline-block;
+      background: var(--gold);
+      color: var(--text-dark);
+      font-weight: 800;
+      letter-spacing: 1px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    h1 { font-size: 20px; line-height: 1.35; margin: 14px 0 0; font-weight: 700; }
+
+    /* ---------- Timer ---------- */
+    .timer {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-size: 40px;
+      font-weight: 800;
+      color: var(--gold);
+      margin: 16px 0 18px;
+      letter-spacing: 2px;
+    }
+
+    /* ---------- Column headers ---------- */
+    .col-head {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 16px 6px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      opacity: 0.7;
+    }
+    .col-head .goals-head { padding-right: 4px; }
+
+    /* ---------- The five answer boxes ---------- */
+    .slots { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+
+    .slot {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--box-empty);
+      border: 2px dashed rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      padding: 14px 16px;
+      min-height: 58px;
+      transition: all 0.25s ease;
+    }
+    .slot.filled {
+      background: var(--box);
+      border: 2px solid var(--correct);
+      color: var(--text-dark);
+      animation: pop 0.3s ease;
+    }
+    @keyframes pop {
+      0% { transform: scale(0.9); }
+      60% { transform: scale(1.03); }
+      100% { transform: scale(1.0); }
+    }
+
+    .rank {
+      flex: 0 0 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: var(--text-dark);
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    /* left column: player name (empty until found) */
+    .slot-name { font-size: 17px; font-weight: 600; flex: 1; }
+    /* a hint shows greyed initials, e.g. "C. R.", until the row is solved */
+    .slot-name.hinted {
+      color: rgba(255, 255, 255, 0.72);
+      letter-spacing: 2px;
+    }
+
+    /* right column: goals number, always visible as a hint */
+    .slot-goals {
+      flex: 0 0 auto;
+      font-variant-numeric: tabular-nums;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--gold);
+      min-width: 44px;
+      text-align: right;
+    }
+    .slot.filled .slot-goals { color: var(--correct); }
+
+    /* ---------- Hint / Reveal buttons (LinkedIn-style charge fill) ---------- */
+    .tools { display: flex; gap: 10px; margin-bottom: 12px; }
+
+    .tool-btn {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      border: none;
+      border-radius: 12px;
+      padding: 13px 10px;
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text-dark);
+      background: #8f9694;          /* grey = still charging / on cooldown */
+      cursor: not-allowed;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* the white "charged" portion grows from the left as the cooldown ticks */
+    .tool-btn .fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: #ffffff;
+      transition: width 0.12s linear;
+    }
+    .tool-btn .label {
+      position: relative;           /* sits above the fill */
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .tool-btn.ready {
+      cursor: pointer;
+      box-shadow: inset 0 0 0 2px var(--gold);
+    }
+    .tool-btn.ready:active { transform: scale(0.98); }
+
+    /* ---------- Search box + dropdown ---------- */
+    .search-wrap { position: relative; }
+
+    #search {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 16px; /* 16px stops phones from zooming in when you tap */
+      border: none;
+      border-radius: 12px;
+      outline: none;
+    }
+    /* wrong pick: a quick shake, plus a red outline that fades out over ~2.5s */
+    #search.wrong {
+      animation: shake 0.4s ease, redfade 2.5s ease forwards;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(6px); }
+    }
+    @keyframes redfade {
+      0%, 55% { box-shadow: 0 0 0 3px #e5484d; }        /* hold red... */
+      100% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0); } /* ...then fade */
+    }
+
+    .dropdown {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      max-height: 240px;
+      overflow-y: auto;
+      display: none;
+    }
+    .dropdown.show { display: block; }
+    .dropdown li {
+      padding: 13px 16px;
+      color: var(--text-dark);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+    }
+    .dropdown li:last-child { border-bottom: none; }
+    .dropdown li:hover, .dropdown li.active { background: #f2f7f4; }
+    .dropdown .empty { color: #888; font-weight: 500; cursor: default; }
+
+    /* ---------- Finish pop-up (modal) + leaderboard ---------- */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 30, 22, 0.72);
+      backdrop-filter: blur(3px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+
+    .modal {
+      background: #fff;
+      color: var(--text-dark);
+      width: 100%;
+      max-width: 380px;
+      border-radius: 18px;
+      padding: 26px 22px;
+      text-align: center;
+      animation: pop 0.35s ease;
+    }
+    .modal h2 { margin: 0 0 4px; font-size: 24px; }
+    .modal .your-time { font-size: 15px; color: #555; margin: 0 0 18px; }
+    .modal .your-time strong { color: var(--correct); font-size: 20px; }
+
+    .lb-title {
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 10px;
+    }
+    .leaderboard { list-style: none; margin: 0; padding: 0; text-align: left; }
+    .leaderboard li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      background: #f2f4f3;
+      font-size: 16px;
+    }
+    .leaderboard li:last-child { margin-bottom: 0; }
+    .leaderboard li.you { background: var(--gold); font-weight: 800; }
+    .lb-rank {
+      flex: 0 0 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #dfe4e2;
+      color: var(--text-dark);
+      font-weight: 800;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .leaderboard li.you .lb-rank { background: rgba(0,0,0,0.15); }
+    .lb-name { flex: 1; font-weight: 600; }
+    .leaderboard li.you .lb-name { font-weight: 800; }
+    .lb-time { font-variant-numeric: tabular-nums; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <header>
+      <span class="badge">Name the Top 5</span>
+      <h1>Top 5 players with the most Champions League Goals</h1>
+    </header>
+
+    <div class="timer" id="timer">0:00</div>
+
+    <div class="col-head">
+      <span>Player</span>
+      <span class="goals-head">Goals</span>
+    </div>
+
+    <!-- The five boxes get built by the script below -->
+    <div class="slots" id="slots"></div>
+
+    <!-- Hint + Reveal buttons -->
+    <div class="tools">
+      <button class="tool-btn" id="hintBtn">
+        <span class="fill"></span>
+        <span class="label">Hint</span>
+      </button>
+      <button class="tool-btn" id="revealBtn">
+        <span class="fill"></span>
+        <span class="label">Reveal answer</span>
+      </button>
+    </div>
+
+    <div class="search-wrap">
+      <input
+        id="search"
+        type="text"
+        placeholder="Search a player…"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+      />
+      <ul class="dropdown" id="dropdown"></ul>
+    </div>
+  </main>
+
+  <!-- The finish pop-up, hidden until all five are found -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h2>Finished!</h2>
+      <p class="your-time">Your time: <strong id="yourTime">0:00</strong></p>
+      <div class="lb-title">Leaderboard</div>
+      <ol class="leaderboard" id="leaderboard"></ol>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================
+    //  THE ONE HARDCODED QUESTION
+    //  CORRECT = the five right answers, each with its goal count.
+    //  WRONG   = 45 famous decoys that are NOT in the real top 5.
+    //  Together (50 players) they form the searchable "database".
+    // =========================================================
+    const CORRECT = [
+      { rank: 1, name: "Cristiano Ronaldo",  goals: 140 },
+      { rank: 2, name: "Lionel Messi",       goals: 129 },
+      { rank: 3, name: "Robert Lewandowski", goals: 105 },
+      { rank: 4, name: "Karim Benzema",      goals: 90 },
+      { rank: 5, name: "Raúl",               goals: 71 },
+    ];
+
+    const WRONG = [
+      "Zlatan Ibrahimović", "Thierry Henry", "Ruud van Nistelrooy", "Thomas Müller",
+      "Kylian Mbappé", "Andriy Shevchenko", "Didier Drogba", "Neymar", "Sergio Agüero",
+      "Zinedine Zidane", "Wayne Rooney", "Steven Gerrard", "Frank Lampard",
+      "Xavi Hernández", "Andrés Iniesta", "Ronaldinho", "Kaká", "Alessandro Del Piero",
+      "Francesco Totti", "Filippo Inzaghi", "Fernando Torres", "David Villa",
+      "Samuel Eto'o", "Arjen Robben", "Franck Ribéry", "Gareth Bale", "Luis Suárez",
+      "Luka Modrić", "Toni Kroos", "Mohamed Salah", "Sadio Mané", "Erling Haaland",
+      "Harry Kane", "Antoine Griezmann", "Ángel Di María", "Edinson Cavani",
+      "Gonzalo Higuaín", "Radamel Falcao", "Eden Hazard", "Kevin De Bruyne",
+      "Iker Casillas", "Sergio Ramos", "Roberto Carlos", "Clarence Seedorf",
+      "Dennis Bergkamp",
+    ];
+
+    // Build the searchable database: correct players carry their rank,
+    // decoys get rank 0. Sorted A–Z so right answers aren't obvious.
+    const DATABASE = [
+      ...CORRECT.map((p) => ({ name: p.name, rank: p.rank })),
+      ...WRONG.map((n) => ({ name: n, rank: 0 })),
+    ].sort((a, b) => a.name.localeCompare(b.name));
+
+    // ---- Fixed rivals for the leaderboard (times are in seconds) ----
+    const COMPETITORS = [
+      { name: "Eren", seconds: 45 },
+      { name: "Mina", seconds: 43 },
+    ];
+    const PLAYER_NAME = "Kazim";
+
+    // ---- Grab the parts of the page we'll update ----
+    const slotsEl     = document.getElementById("slots");
+    const timerEl     = document.getElementById("timer");
+    const searchEl    = document.getElementById("search");
+    const dropdownEl  = document.getElementById("dropdown");
+    const overlayEl   = document.getElementById("overlay");
+    const yourTimeEl  = document.getElementById("yourTime");
+    const leaderboardEl = document.getElementById("leaderboard");
+    // (feedback text line removed)
+    const hintBtn     = document.getElementById("hintBtn");
+    const revealBtn   = document.getElementById("revealBtn");
+
+    // ---- Game state ----
+    let solved;        // a Set of ranks already filled in
+    let startTime;     // when the clock started
+    let tickHandle;    // the repeating game loop
+    let finished;      // true once all five are found
+
+    // Each tool tracks how long its cooldown lasts and WHEN it's next usable.
+    // Initial lock: hint charges over the first 10s, reveal over the first 30s.
+    let hint;          // { duration, readyAt, ready }
+    let reveal;        // { duration, readyAt, ready }
+
+    // Turn "Raúl" or "  MÜLLER " into "raul" / "muller" for fair searching.
+    function normalise(text) {
+      return text
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")                 // splits accented letters apart
+        .replace(/[̀-ͯ]/g, ""); // removes the accent marks
+    }
+
+    // Google-style match: does ANY word (first name or surname) START with
+    // what was typed? Typing "n" -> Neymar, Nistelrooy; "de" -> De Bruyne.
+    function matchesQuery(name, query) {
+      return normalise(name)
+        .split(/\s+/)
+        .some((word) => word.startsWith(query));
+    }
+
+    // Turn "Cristiano Ronaldo" into "C. R." and "Raúl" into "R." for the hint.
+    function initials(name) {
+      return name
+        .split(/\s+/)
+        .map((word) => word[0].toUpperCase() + ".")
+        .join(" ");
+    }
+
+    // The still-unsolved answers (used by both hint and reveal).
+    function unsolvedAnswers() {
+      return CORRECT.filter((a) => !solved.has(a.rank));
+    }
+
+    // Build the five boxes: empty name on the left, goal hint on the right.
+    function buildSlots() {
+      slotsEl.innerHTML = "";
+      CORRECT.forEach((ans) => {
+        const slot = document.createElement("div");
+        slot.className = "slot";
+        slot.id = "slot-" + ans.rank;
+        slot.innerHTML =
+          '<div class="rank">' + ans.rank + '</div>' +
+          '<div class="slot-name"></div>' +
+          '<div class="slot-goals">' + ans.goals + '</div>';
+        slotsEl.appendChild(slot);
+      });
+    }
+
+    // Show m:ss for a number of seconds (e.g. 0:23, 1:07).
+    function format(totalSeconds) {
+      const m = Math.floor(totalSeconds / 60);
+      const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+      return m + ":" + s;
+    }
+
+    // A wrong pick: shake the search box and flash a red outline that fades.
+    let wrongTimer;
+    function flashWrong() {
+      clearTimeout(wrongTimer);
+      searchEl.classList.remove("wrong");
+      void searchEl.offsetWidth;      // restart the animation if it's mid-shake
+      searchEl.classList.add("wrong");
+      wrongTimer = setTimeout(() => searchEl.classList.remove("wrong"), 2500);
+    }
+
+    // Fill a row with its player name (turns green). Used by BOTH a correct
+    // guess and the Reveal button, so revealed rows look like normal finds.
+    function fillSlot(ans) {
+      solved.add(ans.rank);
+      const slot = document.getElementById("slot-" + ans.rank);
+      slot.classList.add("filled");
+      const nameEl = slot.querySelector(".slot-name");
+      nameEl.classList.remove("hinted");
+      nameEl.textContent = ans.name;
+      if (solved.size === CORRECT.length) finish();
+    }
+
+    // ---- The search dropdown ----
+    function renderDropdown() {
+      const query = normalise(searchEl.value);
+      dropdownEl.innerHTML = "";
+
+      if (!query) { dropdownEl.classList.remove("show"); return; }
+
+      const matches = DATABASE.filter((p) => matchesQuery(p.name, query));
+
+      if (matches.length === 0) {
+        dropdownEl.innerHTML = '<li class="empty">No players found</li>';
+      } else {
+        matches.slice(0, 8).forEach((p) => {
+          const li = document.createElement("li");
+          li.textContent = p.name;
+          li.addEventListener("mousedown", (e) => {
+            e.preventDefault();      // keep the input focused
+            pickPlayer(p);
+          });
+          dropdownEl.appendChild(li);
+        });
+      }
+      dropdownEl.classList.add("show");
+    }
+
+    // The player picked someone from the list.
+    function pickPlayer(player) {
+      if (player.rank === 0 || solved.has(player.rank)) {
+        // a decoy, or a correct player already placed — wrong, so shake.
+        flashWrong();
+      } else {
+        const ans = CORRECT.find((a) => a.rank === player.rank);
+        fillSlot(ans);
+      }
+      searchEl.value = "";
+      renderDropdown();
+      searchEl.focus();
+    }
+
+    // ---- Hint & Reveal actions (each returns true if it actually did
+    //      something, so we only start a cooldown when it was used) ----
+    function doHint() {
+      const options = unsolvedAnswers();
+      if (options.length === 0) return false;
+      const pick = options[Math.floor(Math.random() * options.length)];
+      const nameEl = document.querySelector("#slot-" + pick.rank + " .slot-name");
+      nameEl.textContent = initials(pick.name);
+      nameEl.classList.add("hinted");
+      return true;
+    }
+
+    function doReveal() {
+      const options = unsolvedAnswers();
+      if (options.length === 0) return false;
+      const pick = options[Math.floor(Math.random() * options.length)];
+      fillSlot(pick);
+      return true;
+    }
+
+    // ---- The game loop: updates the timer AND the button charge bars ----
+    function updateTool(btn, tool, now) {
+      const chargeStart = tool.readyAt - tool.duration;
+      const pct = Math.max(0, Math.min(1, (now - chargeStart) / tool.duration));
+      btn.querySelector(".fill").style.width = (pct * 100) + "%";
+      tool.ready = now >= tool.readyAt;
+      btn.classList.toggle("ready", tool.ready);
+    }
+
+    function loop() {
+      const now = performance.now();
+      timerEl.textContent = format((now - startTime) / 1000);
+      updateTool(hintBtn, hint, now);
+      updateTool(revealBtn, reveal, now);
+    }
+
+    // Called when all five are filled: stop clock, show pop-up + leaderboard.
+    function finish() {
+      finished = true;
+      clearInterval(tickHandle);
+      const seconds = (performance.now() - startTime) / 1000;
+      timerEl.textContent = format(seconds);
+      yourTimeEl.textContent = format(seconds);
+
+      const entries = [
+        ...COMPETITORS,
+        { name: PLAYER_NAME, seconds: seconds, you: true },
+      ].sort((a, b) => a.seconds - b.seconds);
+
+      leaderboardEl.innerHTML = "";
+      entries.forEach((entry, i) => {
+        const li = document.createElement("li");
+        if (entry.you) li.classList.add("you");
+        li.innerHTML =
+          '<span class="lb-rank">' + (i + 1) + '</span>' +
+          '<span class="lb-name">' + entry.name + (entry.you ? " (You)" : "") + '</span>' +
+          '<span class="lb-time">' + format(entry.seconds) + '</span>';
+        leaderboardEl.appendChild(li);
+      });
+
+      searchEl.disabled = true;
+      dropdownEl.classList.remove("show");
+      // small pause so the player sees the last row fill before the pop-up
+      setTimeout(() => overlayEl.classList.add("show"), 1200);
+    }
+
+    // ---- Set up the game (runs once when the page loads) ----
+    solved = new Set();
+    finished = false;
+    buildSlots();
+
+    startTime = performance.now();
+    hint   = { duration: 10000, readyAt: startTime + 10000, ready: false };
+    reveal = { duration: 30000, readyAt: startTime + 30000, ready: false };
+    tickHandle = setInterval(loop, 100);   // timer + button bars start now
+
+    searchEl.addEventListener("input", renderDropdown);
+
+    hintBtn.addEventListener("click", () => {
+      if (finished || !hint.ready) return;
+      if (doHint()) hint.readyAt = performance.now() + hint.duration;
+    });
+    revealBtn.addEventListener("click", () => {
+      if (finished || !reveal.ready) return;
+      if (doReveal()) reveal.readyAt = performance.now() + reveal.duration;
+    });
+
+    searchEl.focus();
+  </script>
+</body>
+</html>
