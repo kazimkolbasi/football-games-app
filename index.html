@@ -32,6 +32,10 @@
 
     .game { width: 100%; max-width: 520px; }
 
+    /* Mobile: while the search box is focused, add room below so the page can
+       scroll the box up above the on-screen keyboard. */
+    body.searching { padding-bottom: 45vh; }
+
     header { text-align: center; margin-bottom: 18px; }
 
     .badge {
@@ -196,16 +200,24 @@
       100% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0); } /* ...then fade */
     }
 
+    /* Suggestions open UPWARD (above the box) so on a phone they land in the
+       visible strip above the keyboard instead of hiding behind it. */
     .dropdown {
       list-style: none;
-      margin: 8px 0 0;
+      margin: 0;
       padding: 0;
       background: #fff;
       border-radius: 12px;
       overflow: hidden;
-      max-height: 240px;
+      max-height: 260px;
       overflow-y: auto;
       display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 8px);      /* sit just above the search box */
+      z-index: 50;
+      box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.28);
     }
     .dropdown.show { display: block; }
     .dropdown li {
@@ -591,6 +603,24 @@
     tickHandle = setInterval(loop, 100);   // timer + button bars start now
 
     searchEl.addEventListener("input", renderDropdown);
+
+    // Mobile: lift the search box above the on-screen keyboard when tapped,
+    // and keep it there if the keyboard resizes the visible area.
+    function keepSearchInView() {
+      searchEl.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+    searchEl.addEventListener("focus", () => {
+      document.body.classList.add("searching");
+      setTimeout(keepSearchInView, 250);
+    });
+    searchEl.addEventListener("blur", () => {
+      document.body.classList.remove("searching");
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", () => {
+        if (document.activeElement === searchEl) keepSearchInView();
+      });
+    }
 
     hintBtn.addEventListener("click", () => {
       if (finished || !hint.ready) return;
