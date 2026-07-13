@@ -22,21 +22,28 @@
     body {
       margin: 0;
       min-height: 100vh;
+      min-height: 100dvh;   /* dvh = accounts for the phone's address bar */
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
       color: #fff;
       display: flex;
       justify-content: center;
-      padding: 24px 16px 48px;
+      padding: 14px 16px;
     }
 
-    .game { width: 100%; max-width: 520px; }
+    /* The game fills the screen height and shares it out so it fits with no scroll. */
+    .game {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+    }
 
     /* Mobile: while the search box is focused, add room below so the page can
        scroll the box up above the on-screen keyboard. */
     body.searching { padding-bottom: 45vh; }
 
-    header { text-align: center; margin-bottom: 18px; }
+    header { text-align: center; margin-bottom: 8px; flex: 0 0 auto; }
 
     .badge {
       display: inline-block;
@@ -50,17 +57,18 @@
       text-transform: uppercase;
     }
 
-    h1 { font-size: 20px; line-height: 1.35; margin: 14px 0 0; font-weight: 700; }
+    h1 { font-size: 18px; line-height: 1.3; margin: 9px 0 0; font-weight: 700; }
 
     /* ---------- Timer ---------- */
     .timer {
       text-align: center;
       font-variant-numeric: tabular-nums;
-      font-size: 40px;
+      font-size: 34px;
       font-weight: 800;
       color: var(--gold);
-      margin: 16px 0 18px;
+      margin: 8px 0 10px;
       letter-spacing: 2px;
+      flex: 0 0 auto;
     }
 
     /* ---------- Column headers ---------- */
@@ -72,11 +80,20 @@
       letter-spacing: 1px;
       text-transform: uppercase;
       opacity: 0.7;
+      flex: 0 0 auto;
     }
     .col-head .goals-head { padding-right: 4px; }
 
     /* ---------- The five answer boxes ---------- */
-    .slots { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .slots {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex: 1 1 auto;    /* the rows absorb the leftover screen height */
+      min-height: 0;
+    }
 
     .slot {
       display: flex;
@@ -85,9 +102,11 @@
       background: var(--box-empty);
       border: 2px dashed rgba(255, 255, 255, 0.3);
       border-radius: 12px;
-      padding: 14px 16px;
-      min-height: 58px;
-      transition: all 0.25s ease;
+      padding: 8px 16px;
+      min-height: 44px;
+      max-height: 68px;
+      flex: 1 1 0;       /* each row shares the space equally */
+      transition: background 0.25s ease, border 0.25s ease;
     }
     .slot.filled {
       background: var(--box);
@@ -135,7 +154,7 @@
     .slot.filled .slot-goals { color: var(--correct); }
 
     /* ---------- Hint / Reveal buttons (LinkedIn-style charge fill) ---------- */
-    .tools { display: flex; gap: 10px; margin-bottom: 12px; }
+    .tools { display: flex; gap: 10px; margin-bottom: 10px; flex: 0 0 auto; }
 
     .tool-btn {
       flex: 1;
@@ -174,7 +193,7 @@
     .tool-btn.ready:active { transform: scale(0.98); }
 
     /* ---------- Search box + dropdown ---------- */
-    .search-wrap { position: relative; }
+    .search-wrap { position: relative; flex: 0 0 auto; }
 
     #search {
       width: 100%;
