@@ -49,7 +49,7 @@
       display: flex;
       justify-content: center;
       /* notch up top; a gap below the keyboard so it isn't flush to the bottom */
-      padding: max(10px, env(safe-area-inset-top)) 14px max(28px, env(safe-area-inset-bottom));
+      padding: max(10px, env(safe-area-inset-top)) 14px max(40px, env(safe-area-inset-bottom));
       -webkit-user-select: none;
       user-select: none;
       touch-action: manipulation;   /* no double-tap zoom */
@@ -298,8 +298,9 @@
     /* space + delete are the same white keys, just wider (like the reference) */
     .key.special { font-size: 12px; }
     .key.special:active { background: var(--gold); transform: scale(0.95); }
+    /* space + delete equal width, so Z–M align exactly under the row above */
     .key.wide { flex: 1.5; }
-    .key.spacebar { flex: 2.2; }
+    .key.spacebar { flex: 1.5; }
     .key.icon { display: flex; align-items: center; justify-content: center; }
     @keyframes shake {
       0%, 100% { transform: translateX(0); }
