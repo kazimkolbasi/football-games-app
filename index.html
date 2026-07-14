@@ -48,8 +48,8 @@
       color: #fff;
       display: flex;
       justify-content: center;
-      /* notch up top; a gap below the keyboard so it isn't flush to the bottom */
-      padding: max(10px, env(safe-area-inset-top)) 14px max(40px, env(safe-area-inset-bottom));
+      /* notch up top; keyboard drops close to the home bar at the bottom */
+      padding: max(10px, env(safe-area-inset-top)) 14px max(8px, calc(env(safe-area-inset-bottom) - 12px));
       -webkit-user-select: none;
       user-select: none;
       touch-action: manipulation;   /* no double-tap zoom */
@@ -775,6 +775,37 @@
     window.addEventListener("resize", fitTitle);
     // re-fit once the Russo One web font has actually loaded (it's wider)
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+
+    // ===== TEMPORARY calibration readout (top-left). Remove once tuned. =====
+    function showDebug() {
+      let d = document.getElementById("dbg");
+      if (!d) {
+        d = document.createElement("div");
+        d.id = "dbg";
+        d.style.cssText = "position:fixed;top:calc(env(safe-area-inset-top) + 4px);left:6px;z-index:99999;" +
+          "background:rgba(0,0,0,0.72);color:#7CFC00;font:11px/1.35 monospace;padding:4px 6px;" +
+          "border-radius:5px;pointer-events:none;white-space:pre;";
+        document.body.appendChild(d);
+      }
+      const kb = document.getElementById("keyboard").getBoundingClientRect();
+      const probe = document.createElement("div");
+      probe.style.cssText = "position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom);";
+      document.body.appendChild(probe);
+      const safeBot = probe.getBoundingClientRect().height;
+      probe.remove();
+      const vv = window.visualViewport;
+      const H = (vv && vv.height) || window.innerHeight;   // visual viewport is reliable on phones
+      d.textContent =
+        "screenH " + Math.round(H) +
+        "\nkbBottom " + Math.round(kb.bottom) +
+        "\nGAP     " + Math.round(H - kb.bottom) +
+        "\nsafeBot " + Math.round(safeBot);
+    }
+    [300, 900, 1800].forEach((t) => setTimeout(showDebug, t));
+    window.addEventListener("resize", showDebug);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", showDebug);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => setTimeout(showDebug, 120));
+    // ===== end temporary readout =====
 
     hintBtn.addEventListener("click", () => {
       if (finished || !hint.ready) return;
