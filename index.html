@@ -296,7 +296,7 @@
     }
     .key:active { background: var(--gold); transform: scale(0.92); }
     /* space + delete are the same white keys, just wider (like the reference) */
-    .key.special { font-size: 12px; }
+    .key.special { font-size: 12px; display: flex; align-items: center; justify-content: center; }
     .key.special:active { background: var(--gold); transform: scale(0.95); }
     /* space + delete equal width, so Z–M align exactly under the row above */
     .key.wide { flex: 1.5; }
@@ -351,6 +351,7 @@
       display: none;
       position: fixed;
       inset: 0;
+      z-index: 1000;   /* above the keyboard, dropdown, and Hint/Reveal labels */
       background: rgba(4, 30, 22, 0.72);
       backdrop-filter: blur(3px);
       align-items: center;
@@ -656,7 +657,7 @@
           }
           else if (k === "space") { key.classList.add("special", "spacebar"); key.textContent = "space"; }
           else { key.textContent = k; }
-          key.addEventListener("click", () => pressKey(k));
+          key.addEventListener("pointerdown", (e) => { e.preventDefault(); pressKey(k); });
           rowEl.appendChild(key);
         });
         keyboardEl.appendChild(rowEl);
