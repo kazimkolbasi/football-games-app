@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover lets the game fill the whole screen, under the notch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Fixture — Crossover</title>
+
+  <!-- Make it launch fullscreen like an app when added to the home screen -->
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fixture" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
+  <link rel="stylesheet" href="fonts.css" />
+  <style>
+    /* ---------- Fixture design system (kept in sync with index.html) ---------- */
+    :root {
+      --pitch: #0b3d2e;             /* base */
+      --pitch-dark: #072a20;        /* deeper end of the background gradient */
+      --cream: #f2efe6;             /* all text */
+      --gold: #c68a2e;              /* the single accent */
+      --text-dark: #0b3d2e;         /* text sitting on top of gold or cream */
+
+      --row-empty: rgba(255, 255, 255, 0.05);
+      --row-solved: rgba(198, 138, 46, 0.14);
+      --row-border: rgba(242, 239, 230, 0.16);
+
+      --display: 'Bebas Neue', 'Arial Narrow', sans-serif;
+      --body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    /* Lock the page to the screen: no scrolling, no rubber-band bounce. */
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--pitch-dark);   /* paints the safe-area regions green, not white */
+    }
+    body {
+      margin: 0;
+      position: fixed;
+      inset: 0;
+      font-family: var(--body);
+      background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
+      color: var(--cream);
+      display: flex;
+      justify-content: center;
+      padding: max(10px, env(safe-area-inset-top)) 14px max(8px, calc(env(safe-area-inset-bottom) - 20px));
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;   /* no double-tap zoom */
+    }
+
+    .game {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .badge {
+      background: var(--gold);
+      color: var(--text-dark);
+      font-family: var(--body);
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .timer {
+      margin-left: auto;
+      font-family: var(--display);
+      font-variant-numeric: tabular-nums;
+      font-size: 27px;
+      line-height: 1;
+      color: var(--gold);
+      letter-spacing: 1px;
+    }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 2px 12px;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--cream);
+      cursor: pointer;
+      padding: 4px 2px;
+      display: flex;
+      align-items: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .back-btn:active { opacity: 0.55; }
+
+    /* ---------- Level 1's answer, once it's behind you ---------- */
+    .done-row {
+      flex: 0 0 auto;
+      display: none;                 /* only appears once level 1 is done */
+      align-items: center;
+      gap: 10px;
+      background: var(--row-solved);
+      border: 1.5px solid var(--gold);
+      border-radius: 11px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      animation: pop 0.3s ease;
+    }
+    .done-row.show { display: flex; }
+    /* a level you had revealed for you is cream, not gold */
+    .done-row.revealed { background: rgba(242, 239, 230, 0.07); border-color: rgba(242, 239, 230, 0.4); }
+    .done-num {
+      flex: 0 0 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: var(--text-dark);
+      font-family: var(--display);
+      font-size: 13px;
+      line-height: 1;
+      padding-top: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .done-row.revealed .done-num { background: rgba(242, 239, 230, 0.3); color: var(--cream); }
+    .done-clue {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: rgba(242, 239, 230, 0.5);
+    }
+    .done-name { margin-left: auto; font-size: 14px; font-weight: 700; }
+
+    /* ---------- The level label ---------- */
+    .level-label {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: rgba(242, 239, 230, 0.55);
+      padding: 0 4px 8px;
+      margin-top: auto;      /* with .clues below, this centres the clue block */
+    }
+
+    /* ---------- The two clue cards ---------- */
+    .clues {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      margin-bottom: auto;   /* soaks up the spare height above the keyboard */
+      padding-bottom: 12px;
+    }
+    .clue {
+      flex: 1;
+      background: var(--row-empty);
+      border: 1.5px solid var(--row-border);
+      border-radius: 14px;
+      padding: 16px 8px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .clue-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: rgba(242, 239, 230, 0.5);
+    }
+    .clue-value {
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 25px;
+      line-height: 1.05;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--cream);
+    }
+    /* the little gold "+" joining the two clues */
+    .join {
+      flex: 0 0 auto;
+      align-self: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 1.5px solid var(--gold);
+      color: var(--gold);
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(0.9); }
+      60% { transform: scale(1.03); }
+      100% { transform: scale(1.0); }
+    }
+
+    /* ---------- The initials a Hint gives you ---------- */
+    .status-line {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 9px;
+      padding: 0 4px;
+      min-height: 16px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: rgba(242, 239, 230, 0.55);
+    }
+    .initials {
+      margin-left: auto;
+      color: var(--gold);
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 19px;
+      letter-spacing: 3px;
+      line-height: 1;
+    }
+
+    /* ---------- Hint / Reveal buttons (charge fill, same as Top Five) ---------- */
+    .tools { display: flex; gap: 10px; margin-bottom: 10px; flex: 0 0 auto; }
+
+    .tool-btn {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      border: 1.5px solid transparent;
+      border-radius: 12px;
+      padding: 12px 10px;
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 700;
+      color: rgba(242, 239, 230, 0.6);
+      background: rgba(242, 239, 230, 0.08);   /* still charging / on cooldown */
+      cursor: not-allowed;
+      transition: color 0.25s ease, border-color 0.25s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tool-btn .fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: rgba(198, 138, 46, 0.28);
+      transition: width 0.12s linear;
+    }
+    .tool-btn .label {
+      position: relative;           /* sits above the fill */
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .tool-btn.ready {
+      cursor: pointer;
+      color: var(--gold);
+      border-color: var(--gold);
+    }
+    .tool-btn.ready:active { transform: scale(0.98); }
+
+    /* ---------- Search box + dropdown ---------- */
+    .search-wrap { position: relative; flex: 0 0 auto; }
+
+    .query {
+      width: 100%;
+      min-height: 46px;
+      padding: 11px 14px;
+      background: var(--cream);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      color: var(--text-dark);
+      font-size: 17px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .qtext { white-space: nowrap; overflow: hidden; text-transform: uppercase; }
+    .qtext:empty::before { content: "Name a player who fits both…"; color: #8b9490; font-weight: 500; text-transform: none; }
+    .caret {
+      width: 2px; height: 20px;
+      background: var(--pitch);
+      margin-left: 2px;
+      animation: blink 1s steps(1) infinite;
+    }
+    .qtext:empty + .caret { display: none; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .query.wrong { animation: shake 0.4s ease, redfade 2.5s ease forwards; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(6px); }
+    }
+    @keyframes redfade {
+      0%, 55% { box-shadow: 0 0 0 3px #e5484d; }
+      100% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0); }
+    }
+
+    .dropdown {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      background: var(--cream);
+      border-radius: 12px;
+      overflow: hidden;
+      max-height: 260px;
+      overflow-y: auto;
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 8px);      /* sit just above the search box */
+      z-index: 50;
+      box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.28);
+    }
+    .dropdown.show { display: block; }
+    .dropdown li {
+      padding: 13px 16px;
+      color: var(--text-dark);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(11, 61, 46, 0.09);
+    }
+    .dropdown li:last-child { border-bottom: none; }
+    .dropdown li:hover, .dropdown li.active { background: rgba(198, 138, 46, 0.16); }
+    .dropdown .empty { color: #8b9490; font-weight: 500; cursor: default; }
+    .dropdown li.spent { color: #8b9490; text-decoration: line-through; }
+
+    /* ---------- Built-in on-screen keyboard ---------- */
+    .keyboard {
+      flex: 0 0 auto;
+      margin-top: 10px;
+      padding: 0 3px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      user-select: none;
+    }
+    .kb-row { display: flex; gap: 6px; justify-content: center; }
+    .kb-row.indent { padding: 0 5%; }
+    .key {
+      flex: 1;
+      text-align: center;
+      background: var(--cream);
+      color: var(--text-dark);
+      border-radius: 9px;
+      padding: 16px 0;
+      font-size: 18px;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 1.5px 0 rgba(0, 0, 0, 0.3);
+      transition: background 0.08s ease, transform 0.08s ease;
+    }
+    .key:active { background: var(--gold); transform: scale(0.92); }
+    .key.special { font-size: 12px; display: flex; align-items: center; justify-content: center; }
+    .key.special:active { background: var(--gold); transform: scale(0.95); }
+    .key.wide { flex: 1.5; }
+    .key.spacebar { flex: 1.5; }
+    .key.icon { display: flex; align-items: center; justify-content: center; }
+
+    /* ---------- Finish pop-up (modal) ---------- */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(7, 42, 32, 0.78);
+      backdrop-filter: blur(3px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+
+    .modal {
+      background: var(--cream);
+      color: var(--text-dark);
+      width: 100%;
+      max-width: 380px;
+      border-radius: 18px;
+      padding: 26px 22px;
+      text-align: center;
+      animation: pop 0.35s ease;
+    }
+    .modal h2 {
+      margin: 0 0 14px;
+      font-size: 32px;
+      font-family: var(--display);
+      font-weight: 400;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    /* the two answers, listed back on the result card */
+    .answers { list-style: none; margin: 0 0 18px; padding: 0; text-align: left; }
+    .answers li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 11px;
+      margin-bottom: 7px;
+      background: rgba(11, 61, 46, 0.06);
+      font-size: 14px;
+    }
+    .answers li:last-child { margin-bottom: 0; }
+    .ans-clue { color: rgba(11, 61, 46, 0.6); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }
+    .ans-name { margin-left: auto; font-weight: 800; }
+
+    .stats { display: flex; gap: 12px; }
+    .stat {
+      flex: 1;
+      background: rgba(11, 61, 46, 0.06);
+      border-radius: 14px;
+      padding: 14px 8px;
+    }
+    .stat-num {
+      display: block;
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 34px;
+      line-height: 1;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label {
+      display: block;
+      margin-top: 5px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: rgba(11, 61, 46, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <div class="topbar">
+      <a class="back-btn" id="backBtn" href="index.html" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </a>
+      <span class="badge">Crossover</span>
+      <span class="timer" id="timer">0:00</span>
+    </div>
+
+    <!-- Level 1's answer, shown once you've moved on to level 2 -->
+    <div class="done-row" id="doneRow">
+      <span class="done-num">1</span>
+      <span class="done-clue" id="doneClue"></span>
+      <span class="done-name" id="doneName"></span>
+    </div>
+
+    <div class="level-label" id="levelLabel">Level 1 of 2</div>
+
+    <!-- The two clues get filled in by the script below -->
+    <div class="clues">
+      <div class="clue">
+        <span class="clue-label" id="labelA">Club</span>
+        <span class="clue-value" id="valueA">—</span>
+      </div>
+      <span class="join">+</span>
+      <div class="clue">
+        <span class="clue-label" id="labelB">Nation</span>
+        <span class="clue-value" id="valueB">—</span>
+      </div>
+    </div>
+
+    <div class="status-line">
+      <span id="guessLabel">No guesses yet</span>
+      <span class="initials" id="initials"></span>
+    </div>
+
+    <!-- Hint + Reveal buttons -->
+    <div class="tools">
+      <button class="tool-btn" id="hintBtn">
+        <span class="fill"></span>
+        <span class="label">Hint</span>
+      </button>
+      <button class="tool-btn" id="revealBtn">
+        <span class="fill"></span>
+        <span class="label">Reveal answer</span>
+      </button>
+    </div>
+
+    <div class="search-wrap">
+      <ul class="dropdown" id="dropdown"></ul>
+      <div class="query" id="query"><span class="qtext" id="qtext"></span><span class="caret"></span></div>
+    </div>
+
+    <!-- Built-in keyboard — keys are built by the script below -->
+    <div class="keyboard" id="keyboard"></div>
+  </main>
+
+  <!-- The finish pop-up, hidden until both levels are done -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h2>Crossover!</h2>
+      <ul class="answers" id="answerList"></ul>
+      <div class="stats">
+        <div class="stat"><span class="stat-num" id="statSolved">0/2</span><span class="stat-label">Solved</span></div>
+        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================
+    //  THE PUZZLES
+    //  Each day gives you two levels:
+    //    Level 1 — a club and a nation: name a player who is both
+    //    Level 2 — two clubs: name a player who turned out for both
+    //  "answers" lists every player that counts. Anything else is wrong.
+    // =========================================================
+    const PUZZLES = [
+      {
+        one: { labelA: "Club", valueA: "Chelsea", labelB: "Nation", valueB: "Serbia",
+               answers: ["Nemanja Matić", "Branislav Ivanović"] },
+        two: { labelA: "Club", valueA: "Real Madrid", labelB: "Club", valueB: "Manchester United",
+               answers: ["David Beckham", "Cristiano Ronaldo", "Casemiro", "Raphaël Varane",
+                         "Michael Owen", "Ángel Di María"] },
+      },
+      {
+        one: { labelA: "Club", valueA: "Manchester United", labelB: "Nation", valueB: "Netherlands",
+               answers: ["Robin van Persie", "Ruud van Nistelrooy", "Edwin van der Sar",
+                         "Memphis Depay", "Daley Blind", "Donny van de Beek"] },
+        two: { labelA: "Club", valueA: "Barcelona", labelB: "Club", valueB: "Liverpool",
+               answers: ["Luis Suárez", "Philippe Coutinho", "Javier Mascherano",
+                         "Pepe Reina", "Luis García"] },
+      },
+      {
+        one: { labelA: "Club", valueA: "Arsenal", labelB: "Nation", valueB: "Germany",
+               answers: ["Mesut Özil", "Per Mertesacker", "Lukas Podolski",
+                         "Serge Gnabry", "Shkodran Mustafi"] },
+        two: { labelA: "Club", valueA: "AC Milan", labelB: "Club", valueB: "Chelsea",
+               answers: ["Fernando Torres", "Marcel Desailly", "Olivier Giroud",
+                         "Fikayo Tomori", "Andriy Shevchenko", "Thiago Silva"] },
+      },
+      {
+        one: { labelA: "Club", valueA: "Liverpool", labelB: "Nation", valueB: "Spain",
+               answers: ["Fernando Torres", "Xabi Alonso", "Pepe Reina",
+                         "Luis García", "Thiago Alcântara"] },
+        two: { labelA: "Club", valueA: "Juventus", labelB: "Club", valueB: "Manchester United",
+               answers: ["Cristiano Ronaldo", "Paul Pogba", "Patrice Evra", "Ángel Di María"] },
+      },
+      {
+        one: { labelA: "Club", valueA: "Inter Milan", labelB: "Nation", valueB: "Argentina",
+               answers: ["Javier Zanetti", "Diego Milito", "Esteban Cambiasso",
+                         "Mauro Icardi", "Lautaro Martínez"] },
+        two: { labelA: "Club", valueA: "Arsenal", labelB: "Club", valueB: "Barcelona",
+               answers: ["Thierry Henry", "Cesc Fàbregas", "Marc Overmars",
+                         "Alexander Hleb", "Emmanuel Petit", "Alex Song"] },
+      },
+      {
+        one: { labelA: "Club", valueA: "Real Madrid", labelB: "Nation", valueB: "England",
+               answers: ["David Beckham", "Jude Bellingham", "Michael Owen",
+                         "Steve McManaman", "Jonathan Woodgate"] },
+        two: { labelA: "Club", valueA: "Bayern Munich", labelB: "Club", valueB: "Chelsea",
+               answers: ["Arjen Robben", "Michael Ballack", "Claudio Pizarro"] },
+      },
+    ];
+
+    // Famous names that are never the answer — they pad out the search list.
+    const DECOYS = [
+      "Lionel Messi", "Neymar", "Kylian Mbappé", "Erling Haaland", "Robert Lewandowski",
+      "Karim Benzema", "Zinedine Zidane", "Ronaldinho", "Kaká", "Roberto Carlos",
+      "Wayne Rooney", "Steven Gerrard", "Frank Lampard", "John Terry", "Paul Scholes",
+      "Ryan Giggs", "Gary Neville", "Rio Ferdinand", "Sergio Ramos", "Iker Casillas",
+      "Xavi Hernández", "Andrés Iniesta", "Carles Puyol", "Gerard Piqué", "Sergio Busquets",
+      "Mohamed Salah", "Sadio Mané", "Virgil van Dijk", "Kevin De Bruyne", "Sergio Agüero",
+      "Harry Kane", "Eden Hazard", "Toni Kroos", "Luka Modrić", "Marcelo",
+      "Zlatan Ibrahimović", "Didier Drogba", "Thomas Müller", "Manuel Neuer", "Philipp Lahm",
+      "Francesco Totti", "Alessandro Del Piero", "Gianluigi Buffon", "Paolo Maldini",
+      "Antoine Griezmann", "Luis Figo", "Raúl", "Samuel Eto'o", "Ronaldo Nazário",
+    ];
+
+    // ---- Pick TODAY's puzzle (same one all day, a new one tomorrow) ----
+    function dayNumber() {
+      const now = new Date();
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      const epoch = Date.UTC(2026, 0, 1);          // counting starts 1 Jan 2026
+      return Math.floor((today - epoch) / 86400000);
+    }
+    const PUZZLE = PUZZLES[((dayNumber() % PUZZLES.length) + PUZZLES.length) % PUZZLES.length];
+    const LEVELS = [PUZZLE.one, PUZZLE.two];
+
+    // The searchable list: every answer from every puzzle, plus the decoys, A–Z.
+    const DATABASE = (function () {
+      const names = new Set();
+      PUZZLES.forEach((p) => {
+        p.one.answers.forEach((n) => names.add(n));
+        p.two.answers.forEach((n) => names.add(n));
+      });
+      DECOYS.forEach((n) => names.add(n));
+      return [...names].sort((a, b) => a.localeCompare(b));
+    })();
+
+    // How long Hint and Reveal take to charge up. There is no time penalty
+    // for using them — the wait IS the cost, because your time is your score.
+    // Both reset when you move on to level 2.
+    const HINT_UNLOCK   = 20000;   // Hint after 20s, recharges over 20s
+    const REVEAL_UNLOCK = 60000;   // Reveal after a minute, per level
+
+    // ---- Grab the parts of the page we'll update ----
+    const timerEl     = document.getElementById("timer");
+    const levelLabel  = document.getElementById("levelLabel");
+    const guessLabel  = document.getElementById("guessLabel");
+    const initialsEl  = document.getElementById("initials");
+    const hintBtn     = document.getElementById("hintBtn");
+    const revealBtn   = document.getElementById("revealBtn");
+    const queryEl     = document.getElementById("query");
+    const qtextEl     = document.getElementById("qtext");
+    const keyboardEl  = document.getElementById("keyboard");
+    const dropdownEl  = document.getElementById("dropdown");
+    const overlayEl   = document.getElementById("overlay");
+
+    let query = "";
+    let level;         // 0 = level one, 1 = level two
+    let used;          // guesses made this level
+    let guessed;       // names already tried this level
+    let results;       // { name, how } for each level once it's done
+    let hintName;      // which answer the Hint's initials belong to
+    let startTime;
+    let tickHandle;
+    let finished;
+    let hint;          // { duration, readyAt, ready }
+    let reveal;        // { duration, readyAt, ready }
+
+    function normalise(text) {
+      return text
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")                 // splits accented letters apart
+        .replace(/[̀-ͯ]/g, ""); // removes the accent marks
+    }
+
+    function matchesQuery(name, q) {
+      return normalise(name)
+        .split(/\s+/)
+        .some((word) => word.startsWith(q));
+    }
+
+    function format(totalSeconds) {
+      const m = Math.floor(totalSeconds / 60);
+      const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+      return m + ":" + s;
+    }
+
+    // Turn "Nemanja Matić" into "N. M." for the Hint.
+    function initials(name) {
+      return name
+        .split(/\s+/)
+        .map((word) => word[0].toUpperCase() + ".")
+        .join(" ");
+    }
+
+    // How the clue reads in one line, e.g. "Chelsea + Serbia".
+    function clueText(lv) {
+      return lv.valueA + " + " + lv.valueB;
+    }
+
+    // ---- Put the current level on screen ----
+    function renderLevel() {
+      const lv = LEVELS[level];
+      levelLabel.textContent = "Level " + (level + 1) + " of 2";
+      document.getElementById("labelA").textContent = lv.labelA;
+      document.getElementById("valueA").textContent = lv.valueA;
+      document.getElementById("labelB").textContent = lv.labelB;
+      document.getElementById("valueB").textContent = lv.valueB;
+      initialsEl.textContent = "";
+      hintName = null;
+      renderGuesses();
+      fitClues();
+    }
+
+    function renderGuesses() {
+      guessLabel.textContent =
+        used === 0 ? "No guesses yet" : used === 1 ? "1 guess" : used + " guesses";
+    }
+
+    // Club names vary a lot in length — shrink until each one fits its card.
+    function fitClues() {
+      ["valueA", "valueB"].forEach((id) => {
+        const el = document.getElementById(id);
+        let size = 25;
+        el.style.fontSize = size + "px";
+        while (el.scrollWidth > el.clientWidth && size > 11) {
+          size -= 0.5;
+          el.style.fontSize = size + "px";
+        }
+      });
+    }
+
+    let wrongTimer;
+    function flashWrong() {
+      clearTimeout(wrongTimer);
+      queryEl.classList.remove("wrong");
+      void queryEl.offsetWidth;      // restart the animation if it's mid-shake
+      queryEl.classList.add("wrong");
+      wrongTimer = setTimeout(() => queryEl.classList.remove("wrong"), 2500);
+    }
+
+    function renderQuery() {
+      qtextEl.textContent = query;
+      renderDropdown();
+    }
+
+    function renderDropdown() {
+      const q = normalise(query);
+      dropdownEl.innerHTML = "";
+
+      if (!q || finished) { dropdownEl.classList.remove("show"); return; }
+
+      const matches = DATABASE.filter((name) => matchesQuery(name, q));
+
+      if (matches.length === 0) {
+        dropdownEl.innerHTML = '<li class="empty">No players found</li>';
+      } else {
+        matches.slice(0, 6).forEach((name) => {
+          const li = document.createElement("li");
+          li.textContent = name;
+          if (guessed.has(name)) li.classList.add("spent");
+          li.addEventListener("click", () => pickPlayer(name));
+          dropdownEl.appendChild(li);
+        });
+      }
+      dropdownEl.classList.add("show");
+    }
+
+    // ---- Build the on-screen keyboard ----
+    const KEY_ROWS = [
+      ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+      ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+      ["space", "z", "x", "c", "v", "b", "n", "m", "del"],
+    ];
+    function buildKeyboard() {
+      keyboardEl.innerHTML = "";
+      KEY_ROWS.forEach((row, i) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "kb-row";
+        if (i === 1) rowEl.classList.add("indent");
+        row.forEach((k) => {
+          const key = document.createElement("div");
+          key.className = "key";
+          if (k === "del") {
+            key.classList.add("special", "wide", "icon");
+            key.setAttribute("aria-label", "Delete");
+            key.innerHTML = '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6H10L4 12l6 6h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/><line x1="14" y1="10" x2="18" y2="14"/><line x1="18" y1="10" x2="14" y2="14"/></svg>';
+          }
+          else if (k === "space") { key.classList.add("special", "spacebar"); key.textContent = "space"; }
+          else { key.textContent = k; }
+          key.addEventListener("pointerdown", (e) => { e.preventDefault(); pressKey(k); });
+          rowEl.appendChild(key);
+        });
+        keyboardEl.appendChild(rowEl);
+      });
+    }
+    function pressKey(k) {
+      if (finished) return;
+      if (k === "del") query = query.slice(0, -1);
+      else if (k === "space") { if (query && !query.endsWith(" ")) query += " "; }
+      else if (query.length < 24) query += k;
+      renderQuery();
+    }
+
+    // ---- Finishing a level ----
+    function solveLevel(name, how) {
+      results[level] = { name: name, how: how };
+
+      if (level === 0) {
+        // park level one at the top and move on to level two
+        const row = document.getElementById("doneRow");
+        row.classList.add("show");
+        if (how === "revealed") row.classList.add("revealed");
+        document.getElementById("doneClue").textContent = clueText(LEVELS[0]);
+        document.getElementById("doneName").textContent = name;
+
+        level = 1;
+        used = 0;
+        guessed = new Set();
+        renderLevel();
+
+        // both tools charge again from scratch for the new level
+        const now = performance.now();
+        hint   = { duration: HINT_UNLOCK,   readyAt: now + HINT_UNLOCK,   ready: false };
+        reveal = { duration: REVEAL_UNLOCK, readyAt: now + REVEAL_UNLOCK, ready: false };
+      } else {
+        finish();
+      }
+
+      query = "";
+      renderQuery();
+    }
+
+    // The player picked a name from the list.
+    function pickPlayer(name) {
+      if (finished) return;
+
+      // already tried this level — nudge, but don't count it again
+      if (guessed.has(name)) {
+        flashWrong();
+        query = "";
+        renderQuery();
+        return;
+      }
+
+      guessed.add(name);
+      used++;
+      renderGuesses();
+
+      if (LEVELS[level].answers.includes(name)) {
+        solveLevel(name, "found");
+      } else {
+        flashWrong();          // wrong — it just costs you time
+        query = "";
+        renderQuery();
+      }
+    }
+
+    // ---- Hint & Reveal ----
+    function doHint() {
+      if (initialsEl.textContent) return false;      // one hint per level
+      const options = LEVELS[level].answers;
+      hintName = options[Math.floor(Math.random() * options.length)];
+      initialsEl.textContent = initials(hintName);
+      return true;
+    }
+
+    function doReveal() {
+      // hand over the player the hint pointed at, so it never looks like it lied
+      const options = LEVELS[level].answers;
+      const pick = hintName || options[Math.floor(Math.random() * options.length)];
+      solveLevel(pick, "revealed");
+      return true;
+    }
+
+    // ---- The game loop: the timer plus the two charge bars ----
+    function updateTool(btn, tool, now) {
+      const chargeStart = tool.readyAt - tool.duration;
+      const pct = Math.max(0, Math.min(1, (now - chargeStart) / tool.duration));
+      btn.querySelector(".fill").style.width = (pct * 100) + "%";
+      tool.ready = now >= tool.readyAt;
+      btn.classList.toggle("ready", tool.ready);
+    }
+
+    function loop() {
+      const now = performance.now();
+      timerEl.textContent = format((now - startTime) / 1000);
+      updateTool(hintBtn, hint, now);
+      updateTool(revealBtn, reveal, now);
+    }
+
+    function finish() {
+      finished = true;
+      clearInterval(tickHandle);
+      const seconds = (performance.now() - startTime) / 1000;
+      timerEl.textContent = format(seconds);
+
+      query = "";
+      qtextEl.textContent = "";
+      dropdownEl.classList.remove("show");
+
+      const listEl = document.getElementById("answerList");
+      listEl.innerHTML = "";
+      LEVELS.forEach((lv, i) => {
+        const li = document.createElement("li");
+        li.innerHTML =
+          '<span class="ans-clue">' + clueText(lv) + '</span>' +
+          '<span class="ans-name">' + results[i].name + '</span>';
+        listEl.appendChild(li);
+      });
+
+      // only levels you cracked yourself count
+      const solved = results.filter((r) => r.how === "found").length;
+      document.getElementById("statSolved").textContent = solved + "/2";
+      document.getElementById("statTime").textContent = format(seconds);
+
+      setTimeout(() => overlayEl.classList.add("show"), 1000);
+    }
+
+    // ---- Set up the game (runs once when the page loads) ----
+    level = 0;
+    used = 0;
+    guessed = new Set();
+    results = [];
+    finished = false;
+
+    renderLevel();
+
+    startTime = performance.now();
+    hint   = { duration: HINT_UNLOCK,   readyAt: startTime + HINT_UNLOCK,   ready: false };
+    reveal = { duration: REVEAL_UNLOCK, readyAt: startTime + REVEAL_UNLOCK, ready: false };
+    tickHandle = setInterval(loop, 100);
+
+    buildKeyboard();
+    renderQuery();
+    window.addEventListener("resize", fitClues);
+    // re-fit once Bebas Neue has actually loaded (its metrics differ from the fallback)
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitClues);
+
+    hintBtn.addEventListener("click", () => {
+      if (finished || !hint.ready) return;
+      if (doHint()) hint.readyAt = performance.now() + HINT_UNLOCK;
+    });
+    revealBtn.addEventListener("click", () => {
+      if (finished || !reveal.ready) return;
+      doReveal();
+    });
+  </script>
+</body>
+</html>

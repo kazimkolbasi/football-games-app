@@ -122,6 +122,9 @@
 
     /* ---------- Section labels ---------- */
     .section-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 1.6px;
@@ -129,6 +132,14 @@
       color: var(--muted);
       margin: 0 2px 10px;
     }
+    /* the link through to the full leaderboards */
+    .see-all {
+      color: var(--gold);
+      text-decoration: none;
+      letter-spacing: 1.2px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .see-all:active { opacity: 0.6; }
 
     /* ---------- Game cards ---------- */
     .games {
@@ -315,10 +326,21 @@
         </div>
         <span class="gc-action play">Play</span>
       </a>
+
+      <a class="game-card" href="crossover.html">
+        <div class="gc-text">
+          <div class="gc-name">Crossover</div>
+          <div class="gc-sub">Two clues, one player</div>
+        </div>
+        <span class="gc-action play">Play</span>
+      </a>
     </section>
 
     <section class="friends">
-      <div class="section-label">Friends Today</div>
+      <div class="section-label">
+        Friends Today
+        <a class="see-all" href="leaderboard.html">All boards</a>
+      </div>
       <div class="friend-row">
         <span class="friend-rank">1</span>
         <span class="friend-name">Mina</span>

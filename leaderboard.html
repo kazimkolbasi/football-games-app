@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Fixture — Leaderboards</title>
+
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fixture" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
+
+  <link rel="stylesheet" href="fonts.css" />
+  <style>
+    /* ---------- Fixture design system (kept in sync with index.html) ---------- */
+    :root {
+      --pitch: #0b3d2e;
+      --pitch-dark: #072a20;
+      --cream: #f2efe6;
+      --gold: #c68a2e;
+      --text-dark: #0b3d2e;
+
+      --card: rgba(255, 255, 255, 0.05);
+      --card-border: rgba(242, 239, 230, 0.16);
+      --muted: rgba(242, 239, 230, 0.55);
+
+      --display: 'Bebas Neue', 'Arial Narrow', sans-serif;
+      --body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--pitch-dark);
+    }
+    body {
+      margin: 0;
+      position: fixed;
+      inset: 0;
+      font-family: var(--body);
+      background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
+      color: var(--cream);
+      display: flex;
+      justify-content: center;
+      padding: max(10px, env(safe-area-inset-top)) 14px max(10px, env(safe-area-inset-bottom));
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .board {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 2px 14px;
+    }
+    .back-btn {
+      color: var(--cream);
+      padding: 4px 2px;
+      display: flex;
+      align-items: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .back-btn:active { opacity: 0.55; }
+    .badge {
+      background: var(--gold);
+      color: var(--text-dark);
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    /* ---------- Global / Friends toggle ---------- */
+    .segment {
+      flex: 0 0 auto;
+      display: flex;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      padding: 4px;
+      margin-bottom: 12px;
+    }
+    .segment button {
+      flex: 1;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-family: var(--body);
+      font-size: 12.5px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      padding: 9px 6px;
+      border-radius: 999px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.18s ease, color 0.18s ease;
+    }
+    .segment button.on { background: var(--gold); color: var(--text-dark); }
+
+    /* ---------- The game strip (scrolls sideways) ---------- */
+    .games {
+      flex: 0 0 auto;
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      padding-bottom: 12px;
+      scrollbar-width: none;
+    }
+    .games::-webkit-scrollbar { display: none; }
+    .chip {
+      flex: 0 0 auto;
+      border: 1.5px solid var(--card-border);
+      background: var(--card);
+      color: var(--muted);
+      font-family: var(--body);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+      transition: border-color 0.18s ease, color 0.18s ease;
+    }
+    .chip.on { border-color: var(--gold); color: var(--gold); }
+
+    /* ---------- Day / Week / Month / All ---------- */
+    .periods {
+      flex: 0 0 auto;
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .periods button {
+      flex: 1;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      color: var(--muted);
+      font-family: var(--body);
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 6px 2px 8px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: color 0.18s ease, border-color 0.18s ease;
+    }
+    .periods button.on { color: var(--cream); border-bottom-color: var(--gold); }
+
+    /* ---------- Column headings ---------- */
+    .col-head {
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 14px 7px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ---------- The table itself ---------- */
+    .rows {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .rows::-webkit-scrollbar { display: none; }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 13px;
+      padding: 11px 14px;
+      margin-bottom: 7px;
+    }
+    .row .rank {
+      flex: 0 0 22px;
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 18px;
+      line-height: 1;
+      color: var(--gold);
+      text-align: center;
+    }
+    .row .who { flex: 1 1 auto; font-weight: 600; font-size: 14.5px; min-width: 0; }
+    .row .time {
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 21px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.5px;
+    }
+    /* your own row is filled gold, exactly like the hub */
+    .row.you {
+      background: var(--gold);
+      border-color: var(--gold);
+      color: var(--text-dark);
+    }
+    .row.you .rank { color: var(--text-dark); }
+    .row.you .who { font-weight: 800; }
+
+    /* the top three get a medal-ish tint on the rank number */
+    .row.podium .rank { font-size: 21px; }
+
+    /* ---------- Footer note ---------- */
+    .note {
+      flex: 0 0 auto;
+      padding: 10px 4px 0;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <div class="topbar">
+      <a class="back-btn" href="index.html" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </a>
+      <span class="badge">Leaderboards</span>
+    </div>
+
+    <!-- 1. who you're ranked against -->
+    <div class="segment" id="scopes"></div>
+
+    <!-- 2. which board -->
+    <div class="games" id="gameChips"></div>
+
+    <!-- 3. over what stretch of time -->
+    <div class="periods" id="periods"></div>
+
+    <div class="col-head">
+      <span id="headLeft">Today</span>
+      <span id="headRight">Time</span>
+    </div>
+
+    <div class="rows" id="rows"></div>
+
+    <p class="note">
+      Ranked by fastest time — lowest wins.<br />
+      Design preview: these standings are placeholders until accounts are added.
+    </p>
+  </main>
+
+  <script>
+    // =========================================================
+    //  The three things you can switch between. This is the whole
+    //  leaderboard design: 6 boards x 2 scopes x 4 periods.
+    // =========================================================
+    const SCOPES  = [ { id: "global", name: "Global" }, { id: "friends", name: "Friends" } ];
+
+    const BOARDS  = [
+      { id: "overall",  name: "Overall" },      // all five games added together
+      { id: "topfive",  name: "Top Five" },
+      { id: "tictac",   name: "Tic Tac Toe" },
+      { id: "xi",       name: "Missing XI" },
+      { id: "career",   name: "Career Path" },
+      { id: "crossover", name: "Crossover" },
+    ];
+
+    const PERIODS = [
+      { id: "day",   name: "Day",   head: "Today",           label: "Time" },
+      { id: "week",  name: "Week",  head: "This week",       label: "Avg time" },
+      { id: "month", name: "Month", head: "This month",      label: "Avg time" },
+      { id: "all",   name: "All",   head: "Last 30 days",    label: "Avg time" },
+    ];
+
+    // Roughly how long a good player takes at each game, in seconds.
+    // Overall is all five added up.
+    const PAR = { overall: 380, topfive: 70, tictac: 150, xi: 110, career: 35, crossover: 55 };
+
+    const FRIENDS = ["Mina", "Eren", "You", "Berk", "Deniz", "Selin"];
+    const GLOBAL  = ["Mina", "Eren", "You", "Berk", "Deniz", "Selin",
+                     "arda_10", "futbolcu", "kadikoy_kid", "no9", "trabzon61",
+                     "leyla.k", "onur", "eflatun"];
+
+    let scope  = "global";
+    let board  = "overall";
+    let period = "day";
+
+    // ---- A tiny repeatable random, so the same board always looks the same ----
+    function seeded(str) {
+      let h = 1779033703 ^ str.length;
+      for (let i = 0; i < str.length; i++) {
+        h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+        h = (h << 13) | (h >>> 19);
+      }
+      return function () {
+        h = Math.imul(h ^ (h >>> 16), 2246822507);
+        h = Math.imul(h ^ (h >>> 13), 3266489909);
+        h ^= h >>> 16;
+        return (h >>> 0) / 4294967296;
+      };
+    }
+
+    function format(totalSeconds) {
+      const s = Math.round(totalSeconds);
+      const m = Math.floor(s / 60);
+      return m + ":" + (s % 60).toString().padStart(2, "0");
+    }
+
+    // ---- Build one board's standings ----
+    function standings() {
+      const names = scope === "friends" ? FRIENDS : GLOBAL;
+      const rand = seeded(scope + board + period);
+      const par = PAR[board];
+
+      // longer periods are averages, so they bunch closer together
+      const spread = period === "day" ? 0.55 : period === "week" ? 0.38 : 0.28;
+
+      return names
+        .map((name) => ({
+          name: name,
+          seconds: Math.max(par * 0.45, par * (0.7 + rand() * spread * 2)),
+        }))
+        .sort((a, b) => a.seconds - b.seconds);
+    }
+
+    // ---- Draw everything ----
+    function renderControls() {
+      const scopesEl = document.getElementById("scopes");
+      scopesEl.innerHTML = "";
+      SCOPES.forEach((s) => {
+        const b = document.createElement("button");
+        b.textContent = s.name;
+        if (s.id === scope) b.classList.add("on");
+        b.addEventListener("click", () => { scope = s.id; render(); });
+        scopesEl.appendChild(b);
+      });
+
+      const chipsEl = document.getElementById("gameChips");
+      chipsEl.innerHTML = "";
+      BOARDS.forEach((g) => {
+        const c = document.createElement("button");
+        c.className = "chip" + (g.id === board ? " on" : "");
+        c.textContent = g.name;
+        c.addEventListener("click", () => { board = g.id; render(); });
+        chipsEl.appendChild(c);
+      });
+
+      const periodsEl = document.getElementById("periods");
+      periodsEl.innerHTML = "";
+      PERIODS.forEach((p) => {
+        const b = document.createElement("button");
+        b.textContent = p.name;
+        if (p.id === period) b.classList.add("on");
+        b.addEventListener("click", () => { period = p.id; render(); });
+        periodsEl.appendChild(b);
+      });
+    }
+
+    function render() {
+      renderControls();
+
+      const p = PERIODS.find((x) => x.id === period);
+      document.getElementById("headLeft").textContent = p.head;
+      document.getElementById("headRight").textContent = p.label;
+
+      const rowsEl = document.getElementById("rows");
+      rowsEl.innerHTML = "";
+      standings().forEach((entry, i) => {
+        const row = document.createElement("div");
+        row.className = "row" + (entry.name === "You" ? " you" : "") + (i < 3 ? " podium" : "");
+        row.innerHTML =
+          '<span class="rank">' + (i + 1) + '</span>' +
+          '<span class="who">' + entry.name + '</span>' +
+          '<span class="time">' + format(entry.seconds) + '</span>';
+        rowsEl.appendChild(row);
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>
