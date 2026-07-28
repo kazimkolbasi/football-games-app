@@ -214,8 +214,57 @@
       color: var(--text-dark);
       animation: pop 0.35s ease;
     }
-    /* names revealed at the end because you gave up on time */
-    .spot.missed .shirt { border-color: rgba(229, 72, 77, 0.6); }
+    /* names handed to you by the Reveal button — not yours, so not gold */
+    .spot.revealed .shirt {
+      background: rgba(242, 239, 230, 0.14);
+      border-color: rgba(242, 239, 230, 0.5);
+      color: var(--cream);
+    }
+    .spot.revealed .spot-name { color: rgba(242, 239, 230, 0.75); font-weight: 600; }
+
+    /* a Hint puts greyed initials under a shirt until someone names it */
+    .spot-name.hinted { color: rgba(242, 239, 230, 0.6); letter-spacing: 1.5px; }
+
+    /* ---------- Hint / Reveal buttons (charge fill, same as Top Five) ---------- */
+    .tools { display: flex; gap: 10px; margin-bottom: 10px; flex: 0 0 auto; }
+
+    .tool-btn {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      border: 1.5px solid transparent;
+      border-radius: 12px;
+      padding: 12px 10px;
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 700;
+      color: rgba(242, 239, 230, 0.6);
+      background: rgba(242, 239, 230, 0.08);   /* still charging / on cooldown */
+      cursor: not-allowed;
+      transition: color 0.25s ease, border-color 0.25s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tool-btn .fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: rgba(198, 138, 46, 0.28);
+      transition: width 0.12s linear;
+    }
+    .tool-btn .label {
+      position: relative;           /* sits above the fill */
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .tool-btn.ready {
+      cursor: pointer;
+      color: var(--gold);
+      border-color: var(--gold);
+    }
+    .tool-btn.ready:active { transform: scale(0.98); }
 
     .spot-name {
       margin-top: 3px;
@@ -423,6 +472,18 @@
     <!-- The eleven shirts get positioned by the script below -->
     <div class="pitch" id="pitch"><div class="box"></div></div>
 
+    <!-- Hint + Reveal buttons -->
+    <div class="tools">
+      <button class="tool-btn" id="hintBtn">
+        <span class="fill"></span>
+        <span class="label">Hint</span>
+      </button>
+      <button class="tool-btn" id="revealBtn">
+        <span class="fill"></span>
+        <span class="label">Reveal a player</span>
+      </button>
+    </div>
+
     <div class="search-wrap">
       <ul class="dropdown" id="dropdown"></ul>
       <div class="query" id="query"><span class="qtext" id="qtext"></span><span class="caret"></span></div>
@@ -555,6 +616,12 @@
     // How many shirts the player actually has to work out.
     const TO_FIND = XI.players.filter((p) => !p.given).length;
 
+    // How long Hint and Reveal take to charge up. There is no time penalty
+    // for using them — the wait IS the cost, because your time is your score.
+    const HINT_UNLOCK     = 20000;   // Hint after 20s, recharges over 20s
+    const REVEAL_UNLOCK   = 60000;   // Reveal after 1 min...
+    const REVEAL_COOLDOWN = 45000;   // ...and 45s between each one
+
     // ---- Grab the parts of the page we'll update ----
     const pitchEl     = document.getElementById("pitch");
     const timerEl     = document.getElementById("timer");
@@ -564,13 +631,18 @@
     const dropdownEl  = document.getElementById("dropdown");
     const overlayEl   = document.getElementById("overlay");
     const foundLabel  = document.getElementById("foundLabel");
+    const hintBtn     = document.getElementById("hintBtn");
+    const revealBtn   = document.getElementById("revealBtn");
 
     let query = "";    // what the player has typed on the built-in keyboard
-    let found;         // a Set of indexes the player has named
+    let found;         // a Set of indexes the player worked out themselves
+    let shown;         // a Set of indexes handed over by the Reveal button
     let guessed;       // every name already tried, so repeats don't shake twice
     let startTime;
     let tickHandle;
     let finished;
+    let hint;          // { duration, readyAt, ready }
+    let reveal;        // { duration, readyAt, ready }
 
     function normalise(text) {
       return text
@@ -609,21 +681,40 @@
     }
 
     function renderScore() {
-      foundLabel.textContent = found.size + " of " + TO_FIND;
+      foundLabel.textContent = (found.size + shown.size) + " of " + TO_FIND;
     }
 
-    // Put a name on a shirt.
+    // Put a name on a shirt — either because you named it ("found")
+    // or because the Reveal button handed it over ("revealed").
     function fillSpot(i, how) {
       const p = XI.players[i];
       const spot = document.getElementById("spot-" + i);
-      spot.classList.add(how);                 // "found" or "missed"
+      spot.classList.add(how);
       spot.querySelector(".shirt").textContent = "";
-      spot.querySelector(".spot-name").textContent = p.short;
-      if (how === "found") {
-        found.add(i);
-        renderScore();
-        if (found.size === TO_FIND) finish();
-      }
+      const nameEl = spot.querySelector(".spot-name");
+      nameEl.classList.remove("hinted");
+      nameEl.textContent = p.short;
+
+      if (how === "found") found.add(i);
+      else shown.add(i);
+
+      renderScore();
+      if (found.size + shown.size === TO_FIND) finish();
+    }
+
+    // Shirts nobody has named yet — used by both Hint and Reveal.
+    function stillMissing() {
+      return XI.players
+        .map((p, i) => i)
+        .filter((i) => !XI.players[i].given && !found.has(i) && !shown.has(i));
+    }
+
+    // Turn "Dani Alves" into "D. A." for the Hint.
+    function initials(name) {
+      return name
+        .split(/\s+/)
+        .map((word) => word[0].toUpperCase() + ".")
+        .join(" ");
     }
 
     let wrongTimer;
@@ -703,7 +794,8 @@
     function pickPlayer(name) {
       if (finished) return;
 
-      const i = XI.players.findIndex((p, idx) => p.name === name && !p.given && !found.has(idx));
+      const i = XI.players.findIndex((p, idx) =>
+        p.name === name && !p.given && !found.has(idx) && !shown.has(idx));
       if (i !== -1) {
         fillSpot(i, "found");
       } else {
@@ -715,8 +807,41 @@
       renderQuery();
     }
 
+    // ---- Hint & Reveal (each returns true if it actually did something,
+    //      so a wasted press never starts a cooldown) ----
+    function doHint() {
+      // only hint at a shirt that hasn't been hinted at already
+      const options = stillMissing().filter(
+        (i) => !document.querySelector("#spot-" + i + " .spot-name").textContent);
+      if (options.length === 0) return false;
+      const i = options[Math.floor(Math.random() * options.length)];
+      const nameEl = document.querySelector("#spot-" + i + " .spot-name");
+      nameEl.textContent = initials(XI.players[i].name);
+      nameEl.classList.add("hinted");
+      return true;
+    }
+
+    function doReveal() {
+      const options = stillMissing();
+      if (options.length === 0) return false;
+      fillSpot(options[Math.floor(Math.random() * options.length)], "revealed");
+      return true;
+    }
+
+    // ---- The game loop: the timer plus the two charge bars ----
+    function updateTool(btn, tool, now) {
+      const chargeStart = tool.readyAt - tool.duration;
+      const pct = Math.max(0, Math.min(1, (now - chargeStart) / tool.duration));
+      btn.querySelector(".fill").style.width = (pct * 100) + "%";
+      tool.ready = now >= tool.readyAt;
+      btn.classList.toggle("ready", tool.ready);
+    }
+
     function loop() {
-      timerEl.textContent = format((performance.now() - startTime) / 1000);
+      const now = performance.now();
+      timerEl.textContent = format((now - startTime) / 1000);
+      updateTool(hintBtn, hint, now);
+      updateTool(revealBtn, reveal, now);
     }
 
     // Called when all the missing names are in.
@@ -731,7 +856,8 @@
       dropdownEl.classList.remove("show");
 
       document.getElementById("modalLineup").textContent = XI.title + " — " + XI.subtitle;
-      document.getElementById("statFound").textContent = TO_FIND + "/" + TO_FIND;
+      // only the ones you worked out yourself count as "named"
+      document.getElementById("statFound").textContent = found.size + "/" + TO_FIND;
       document.getElementById("statTime").textContent = format(seconds);
 
       // small pause so the player sees the last shirt fill before the pop-up
@@ -740,6 +866,7 @@
 
     // ---- Set up the game (runs once when the page loads) ----
     found = new Set();
+    shown = new Set();
     guessed = new Set();
     finished = false;
 
@@ -748,6 +875,8 @@
     buildPitch();
 
     startTime = performance.now();
+    hint   = { duration: HINT_UNLOCK,   readyAt: startTime + HINT_UNLOCK,   ready: false };
+    reveal = { duration: REVEAL_UNLOCK, readyAt: startTime + REVEAL_UNLOCK, ready: false };
     tickHandle = setInterval(loop, 100);
 
     // Shrink the title font until it fits on a single line at any phone width.
@@ -767,6 +896,15 @@
     window.addEventListener("resize", fitTitle);
     // re-fit once Bebas Neue has actually loaded (its metrics differ from the fallback)
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+
+    hintBtn.addEventListener("click", () => {
+      if (finished || !hint.ready) return;
+      if (doHint()) hint.readyAt = performance.now() + HINT_UNLOCK;
+    });
+    revealBtn.addEventListener("click", () => {
+      if (finished || !reveal.ready) return;
+      if (doReveal()) reveal.readyAt = performance.now() + REVEAL_COOLDOWN;
+    });
   </script>
 </body>
 </html>

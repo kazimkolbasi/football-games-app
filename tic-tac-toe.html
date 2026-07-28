@@ -167,10 +167,17 @@
     }
     /* the square you're currently answering */
     .cell.active { border-color: var(--gold); background: rgba(198, 138, 46, 0.1); }
-    /* a square you've filled in */
+    /* a square you filled in yourself */
     .cell.filled {
       background: var(--row-solved);
       border-color: var(--gold);
+      cursor: default;
+      animation: pop 0.3s ease;
+    }
+    /* a square the Reveal button filled — not yours, so not gold */
+    .cell.revealed {
+      background: rgba(242, 239, 230, 0.08);
+      border-color: rgba(242, 239, 230, 0.45);
       cursor: default;
       animation: pop 0.3s ease;
     }
@@ -185,43 +192,65 @@
       line-height: 1.1;
       color: var(--cream);
     }
-    /* how many people would have given that answer — lower is rarer */
-    .cell-rarity {
+    .cell.revealed .cell-name { color: rgba(242, 239, 230, 0.75); font-weight: 600; }
+    /* a Hint leaves greyed initials in the square */
+    .cell-hint {
       font-family: var(--display);
       font-weight: 400;
-      font-size: 16px;
+      font-size: 17px;
+      letter-spacing: 2px;
       line-height: 1;
-      color: var(--gold);
+      color: rgba(242, 239, 230, 0.5);
     }
     /* a faint plus sign marks an empty square */
     .cell-empty { font-size: 18px; color: rgba(242, 239, 230, 0.2); font-weight: 300; }
 
-    /* ---------- Guesses left ---------- */
-    .tries {
+    /* ---------- Hint / Reveal buttons (charge fill, same as Top Five) ---------- */
+    .tools {
+      display: flex;
+      gap: 10px;
       flex: 0 0 auto;
+      margin-bottom: auto;   /* soaks up the spare height above the keyboard */
+      padding-bottom: 10px;
+    }
+
+    .tool-btn {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      border: 1.5px solid transparent;
+      border-radius: 12px;
+      padding: 12px 10px;
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 700;
+      color: rgba(242, 239, 230, 0.6);
+      background: rgba(242, 239, 230, 0.08);   /* still charging / on cooldown */
+      cursor: not-allowed;
+      transition: color 0.25s ease, border-color 0.25s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tool-btn .fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: rgba(198, 138, 46, 0.28);
+      transition: width 0.12s linear;
+    }
+    .tool-btn .label {
+      position: relative;           /* sits above the fill */
+      z-index: 1;
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: auto;   /* soaks up the spare height above the keyboard */
-      padding: 0 4px 10px;
+      justify-content: center;
+      gap: 6px;
     }
-    .pips { display: flex; gap: 5px; }
-    .pip {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      border: 1.5px solid var(--gold);
-      transition: border-color 0.2s ease, opacity 0.2s ease;
+    .tool-btn.ready {
+      cursor: pointer;
+      color: var(--gold);
+      border-color: var(--gold);
     }
-    .pip.used { border-color: rgba(242, 239, 230, 0.25); opacity: 0.6; }
-    .tries-label {
-      margin-left: auto;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1.3px;
-      text-transform: uppercase;
-      color: rgba(242, 239, 230, 0.55);
-    }
+    .tool-btn.ready:active { transform: scale(0.98); }
 
     /* ---------- Search box + dropdown ---------- */
     .search-wrap { position: relative; flex: 0 0 auto; }
@@ -401,9 +430,16 @@
     <!-- The grid gets built by the script below -->
     <div class="grid" id="grid"></div>
 
-    <div class="tries">
-      <div class="pips" id="pips"></div>
-      <span class="tries-label" id="triesLabel">9 guesses left</span>
+    <!-- Hint + Reveal buttons -->
+    <div class="tools">
+      <button class="tool-btn" id="hintBtn">
+        <span class="fill"></span>
+        <span class="label">Hint</span>
+      </button>
+      <button class="tool-btn" id="revealBtn">
+        <span class="fill"></span>
+        <span class="label">Reveal a square</span>
+      </button>
     </div>
 
     <div class="search-wrap">
@@ -419,10 +455,9 @@
   <div class="overlay" id="overlay">
     <div class="modal">
       <h2 id="resultTitle">Grid complete!</h2>
-      <p class="note">Rarity is how many players would have given your answer — lower is better.</p>
       <div class="stats">
-        <div class="stat"><span class="stat-num" id="statFilled">0/9</span><span class="stat-label">Squares</span></div>
-        <div class="stat"><span class="stat-num" id="statRarity">—</span><span class="stat-label">Avg rarity</span></div>
+        <div class="stat"><span class="stat-num" id="statFilled">0/9</span><span class="stat-label">Your squares</span></div>
+        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time</span></div>
       </div>
     </div>
   </div>
@@ -432,8 +467,8 @@
     //  THE PLAYER DATABASE
     //  "clubs" only lists the clubs that appear in the grids below —
     //  it is not a full career history, just what the grids need.
-    //  "fame" is a rough guess at how many players out of 100 would
-    //  name them, so a low number means a rarer, better answer.
+    //  "fame" is left over from the old rarity scoring and is NOT used
+    //  any more — time is the only score. Kept in case it's wanted later.
     // =========================================================
     const PLAYERS = [
       // ---- Brazil ----
@@ -583,12 +618,18 @@
     const GRID = GRIDS[((dayNumber() % GRIDS.length) + GRIDS.length) % GRIDS.length];
 
     const DATABASE = PLAYERS.slice().sort((a, b) => a.name.localeCompare(b.name));
-    const MAX_GUESSES = 9;
+
+    // How long Hint and Reveal take to charge up. There is no time penalty
+    // for using them — the wait IS the cost, because your time is your score.
+    // Revealing your way through the whole grid takes about nine minutes.
+    const HINT_UNLOCK     = 30000;   // Hint after 30s, recharges over 30s
+    const REVEAL_UNLOCK   = 90000;   // Reveal after 90s...
+    const REVEAL_COOLDOWN = 60000;   // ...and a minute between each one
 
     // ---- Grab the parts of the page we'll update ----
     const gridEl      = document.getElementById("grid");
-    const pipsEl      = document.getElementById("pips");
-    const triesLabel  = document.getElementById("triesLabel");
+    const hintBtn     = document.getElementById("hintBtn");
+    const revealBtn   = document.getElementById("revealBtn");
     const timerEl     = document.getElementById("timer");
     const queryEl     = document.getElementById("query");
     const qtextEl     = document.getElementById("qtext");
@@ -597,13 +638,14 @@
     const overlayEl   = document.getElementById("overlay");
 
     let query = "";
-    let used;          // guesses spent
-    let filled;        // { "r,c": player } for every square answered
+    let filled;        // { "r,c": { player, how } } for every square answered
     let usedNames;     // names already placed, so nobody is used twice
     let active;        // the square currently being answered, e.g. "0,2"
     let startTime;
     let tickHandle;
     let finished;
+    let hint;          // { duration, readyAt, ready }
+    let reveal;        // { duration, readyAt, ready }
 
     function normalise(text) {
       return text
@@ -662,21 +704,39 @@
       });
     }
 
-    function buildPips() {
-      pipsEl.innerHTML = "";
-      for (let i = 0; i < MAX_GUESSES; i++) {
-        const pip = document.createElement("span");
-        pip.className = "pip";
-        pip.id = "pip-" + i;
-        pipsEl.appendChild(pip);
-      }
+    // Every player who fits a square and hasn't been used elsewhere.
+    function answersFor(r, c) {
+      return PLAYERS.filter((p) => isValid(p, r, c) && !usedNames.has(p.name));
     }
-    function renderTries() {
-      for (let i = 0; i < MAX_GUESSES; i++) {
-        document.getElementById("pip-" + i).classList.toggle("used", i < used);
+
+    // Squares still waiting for an answer.
+    function emptyCells() {
+      const list = [];
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) if (!filled[r + "," + c]) list.push([r, c]);
       }
-      const left = MAX_GUESSES - used;
-      triesLabel.textContent = left === 1 ? "1 guess left" : left + " guesses left";
+      return list;
+    }
+
+    // Turn "Dani Alves" into "D. A." for the Hint.
+    function initials(name) {
+      return name
+        .split(/\s+/)
+        .map((word) => word[0].toUpperCase() + ".")
+        .join(" ");
+    }
+
+    // Drop a player into a square — either yours ("filled") or handed
+    // over by the Reveal button ("revealed").
+    function placePlayer(r, c, player, how) {
+      filled[r + "," + c] = { player: player, how: how };
+      usedNames.add(player.name);
+      const cell = document.getElementById("cell-" + r + "-" + c);
+      cell.classList.remove("active");
+      cell.classList.add(how);
+      cell.innerHTML = '<span class="cell-name">' + player.short + '</span>';
+      selectNextEmpty();
+      if (Object.keys(filled).length === 9) finish();
     }
 
     // Choose which square you're answering.
@@ -791,35 +851,70 @@
       }
 
       const [r, c] = active.split(",").map(Number);
-      used++;
-      renderTries();
 
       if (isValid(player, r, c)) {
-        filled[active] = player;
-        usedNames.add(player.name);
-        const cell = document.getElementById("cell-" + r + "-" + c);
-        cell.classList.remove("active");
-        cell.classList.add("filled");
-        cell.innerHTML =
-          '<span class="cell-name">' + player.short + '</span>' +
-          '<span class="cell-rarity">' + player.fame + '%</span>';
-        selectNextEmpty();
+        placePlayer(r, c, player, "filled");
       } else {
-        flashWrong();          // wrong for this square — the guess is spent
+        flashWrong();          // wrong for this square — it just costs you time
       }
 
       query = "";
       renderQuery();
+    }
 
-      const count = Object.keys(filled).length;
-      if (used >= MAX_GUESSES || count === 9) finish(count);
+    // ---- Hint & Reveal (each returns true if it actually did something,
+    //      so a wasted press never starts a cooldown) ----
+    function doHint() {
+      if (!active) return false;
+      const [r, c] = active.split(",").map(Number);
+      const cell = document.getElementById("cell-" + r + "-" + c);
+      if (cell.querySelector(".cell-hint")) return false;   // already hinted
+      const options = answersFor(r, c);
+      if (options.length === 0) return false;
+      const pick = options[Math.floor(Math.random() * options.length)];
+      cell.innerHTML = '<span class="cell-hint">' + initials(pick.name) + '</span>';
+      return true;
+    }
+
+    function doReveal() {
+      // fill the square you're on, or the first empty one if none is picked
+      const target = active ? active.split(",").map(Number) : (emptyCells()[0] || null);
+      if (!target) return false;
+      let options = answersFor(target[0], target[1]);
+      if (options.length === 0) return false;
+
+      // if this square was hinted, hand over the player those initials belong
+      // to — otherwise the hint would look like it had lied to you
+      const hinted = document
+        .getElementById("cell-" + target[0] + "-" + target[1])
+        .querySelector(".cell-hint");
+      if (hinted) {
+        const match = options.filter((p) => initials(p.name) === hinted.textContent);
+        if (match.length) options = match;
+      }
+
+      const pick = options[Math.floor(Math.random() * options.length)];
+      placePlayer(target[0], target[1], pick, "revealed");
+      return true;
+    }
+
+    // ---- The game loop: the timer plus the two charge bars ----
+    function updateTool(btn, tool, now) {
+      const chargeStart = tool.readyAt - tool.duration;
+      const pct = Math.max(0, Math.min(1, (now - chargeStart) / tool.duration));
+      btn.querySelector(".fill").style.width = (pct * 100) + "%";
+      tool.ready = now >= tool.readyAt;
+      btn.classList.toggle("ready", tool.ready);
     }
 
     function loop() {
-      timerEl.textContent = format((performance.now() - startTime) / 1000);
+      const now = performance.now();
+      timerEl.textContent = format((now - startTime) / 1000);
+      updateTool(hintBtn, hint, now);
+      updateTool(revealBtn, reveal, now);
     }
 
-    function finish(count) {
+    function finish() {
       finished = true;
       clearInterval(tickHandle);
       timerEl.textContent = format((performance.now() - startTime) / 1000);
@@ -829,35 +924,42 @@
       qtextEl.textContent = "";
       dropdownEl.classList.remove("show");
 
-      const picks = Object.values(filled);
-      const avg = picks.length
-        ? Math.round(picks.reduce((sum, p) => sum + p.fame, 0) / picks.length)
-        : null;
+      // only the squares you worked out yourself count as yours
+      const yours = Object.values(filled).filter((f) => f.how === "filled").length;
 
-      document.getElementById("resultTitle").textContent = count === 9 ? "Grid complete!" : "Out of guesses";
-      document.getElementById("statFilled").textContent = count + "/9";
-      document.getElementById("statRarity").textContent = avg === null ? "—" : avg + "%";
+      document.getElementById("resultTitle").textContent = "Grid complete!";
+      document.getElementById("statFilled").textContent = yours + "/9";
+      document.getElementById("statTime").textContent =
+        format((performance.now() - startTime) / 1000);
 
       // small pause so the player sees the last square fill before the pop-up
       setTimeout(() => overlayEl.classList.add("show"), 1200);
     }
 
     // ---- Set up the game (runs once when the page loads) ----
-    used = 0;
     filled = {};
     usedNames = new Set();
     finished = false;
 
     buildGrid();
-    buildPips();
-    renderTries();
     selectNextEmpty();          // start on the top-left square
 
     startTime = performance.now();
+    hint   = { duration: HINT_UNLOCK,   readyAt: startTime + HINT_UNLOCK,   ready: false };
+    reveal = { duration: REVEAL_UNLOCK, readyAt: startTime + REVEAL_UNLOCK, ready: false };
     tickHandle = setInterval(loop, 100);
 
     buildKeyboard();
     renderQuery();
+
+    hintBtn.addEventListener("click", () => {
+      if (finished || !hint.ready) return;
+      if (doHint()) hint.readyAt = performance.now() + HINT_UNLOCK;
+    });
+    revealBtn.addEventListener("click", () => {
+      if (finished || !reveal.ready) return;
+      if (doReveal()) reveal.readyAt = performance.now() + REVEAL_COOLDOWN;
+    });
   </script>
 </body>
 </html>

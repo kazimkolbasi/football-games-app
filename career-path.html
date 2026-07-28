@@ -224,33 +224,73 @@
     }
     .step.done .step-years { color: var(--gold); }
 
-    /* ---------- Guesses left: six pips ---------- */
-    .tries {
+    /* ---------- Guess counter + the initials a Hint gives you ---------- */
+    .status-line {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 10px;
+      gap: 10px;
+      margin-bottom: 9px;
       padding: 0 4px;
-    }
-    .pips { display: flex; gap: 6px; }
-    .pip {
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-      border: 1.5px solid var(--gold);
-      transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
-    }
-    /* a used-up guess burns out */
-    .pip.used { background: none; border-color: rgba(242, 239, 230, 0.25); opacity: 0.6; }
-    .tries-label {
-      margin-left: auto;
+      min-height: 16px;
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 1.3px;
       text-transform: uppercase;
       color: rgba(242, 239, 230, 0.55);
     }
+    .initials {
+      margin-left: auto;
+      color: var(--gold);
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 19px;
+      letter-spacing: 3px;
+      line-height: 1;
+    }
+
+    /* ---------- Hint / Reveal buttons (charge fill, same as Top Five) ---------- */
+    .tools { display: flex; gap: 10px; margin-bottom: 10px; flex: 0 0 auto; }
+
+    .tool-btn {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      border: 1.5px solid transparent;
+      border-radius: 12px;
+      padding: 12px 10px;
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 700;
+      color: rgba(242, 239, 230, 0.6);
+      background: rgba(242, 239, 230, 0.08);   /* still charging / on cooldown */
+      cursor: not-allowed;
+      transition: color 0.25s ease, border-color 0.25s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* the "charged" portion grows from the left as the timer ticks */
+    .tool-btn .fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: rgba(198, 138, 46, 0.28);
+      transition: width 0.12s linear;
+    }
+    .tool-btn .label {
+      position: relative;           /* sits above the fill */
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    /* charged: gold outline + gold label */
+    .tool-btn.ready {
+      cursor: pointer;
+      color: var(--gold);
+      border-color: var(--gold);
+    }
+    .tool-btn.ready:active { transform: scale(0.98); }
 
     /* ---------- Search box + dropdown ---------- */
     .search-wrap { position: relative; flex: 0 0 auto; }
@@ -468,10 +508,21 @@
     <!-- The six club rows get built by the script below -->
     <div class="path" id="path"></div>
 
-    <!-- One pip per guess; they burn out as you use them -->
-    <div class="tries">
-      <div class="pips" id="pips"></div>
-      <span class="tries-label" id="triesLabel">6 guesses left</span>
+    <div class="status-line">
+      <span id="guessLabel">No guesses yet</span>
+      <span class="initials" id="initials"></span>
+    </div>
+
+    <!-- Hint + Reveal buttons -->
+    <div class="tools">
+      <button class="tool-btn" id="hintBtn">
+        <span class="fill"></span>
+        <span class="label">Hint</span>
+      </button>
+      <button class="tool-btn" id="revealBtn">
+        <span class="fill"></span>
+        <span class="label">Reveal answer</span>
+      </button>
     </div>
 
     <div class="search-wrap">
@@ -594,12 +645,19 @@
       return [...names].sort((a, b) => a.localeCompare(b));
     })();
 
-    const MAX_GUESSES = 6;
+    // How long Hint and Reveal take to charge up. There is no time penalty
+    // for using them — the wait IS the cost, because your time is your score.
+    const HINT_UNLOCK   = 20000;   // Hint lights up after 20s...
+    const HINT_COOLDOWN = 20000;   // ...and recharges over 20s
+    const REVEAL_UNLOCK = 180000;  // Reveal only after 3 minutes: using it
+                                   // means you've already posted a slow time
 
     // ---- Grab the parts of the page we'll update ----
     const pathEl      = document.getElementById("path");
-    const pipsEl      = document.getElementById("pips");
-    const triesLabel  = document.getElementById("triesLabel");
+    const guessLabel  = document.getElementById("guessLabel");
+    const initialsEl  = document.getElementById("initials");
+    const hintBtn     = document.getElementById("hintBtn");
+    const revealBtn   = document.getElementById("revealBtn");
     const timerEl     = document.getElementById("timer");
     const queryEl     = document.getElementById("query");     // the typed-text bar
     const qtextEl     = document.getElementById("qtext");     // the typed text itself
@@ -609,11 +667,13 @@
 
     let query = "";      // what the player has typed on the built-in keyboard
     let shown;           // how many clubs are currently visible (starts at 1)
-    let used;            // how many guesses have been spent
-    let guessed;         // a Set of names already tried, so they can't cost twice
+    let used;            // how many guesses have been made
+    let guessed;         // a Set of names already tried, so they don't count twice
     let startTime;       // when the clock started
     let tickHandle;      // the repeating timer
     let finished;        // true once the round is over
+    let hint;            // { duration, readyAt, ready }
+    let reveal;          // { duration, readyAt, ready }
 
     // Turn "Raúl" or "  MÜLLER " into "raul" / "muller" for fair searching.
     function normalise(text) {
@@ -665,22 +725,18 @@
       step.querySelector(".step-years").textContent = TARGET.clubs[i][1];
     }
 
-    // Build the six guess pips and keep them in step with the guesses used.
-    function buildPips() {
-      pipsEl.innerHTML = "";
-      for (let i = 0; i < MAX_GUESSES; i++) {
-        const pip = document.createElement("span");
-        pip.className = "pip";
-        pip.id = "pip-" + i;
-        pipsEl.appendChild(pip);
-      }
+    // There's no guess limit any more — the counter is just for your card.
+    function renderGuesses() {
+      guessLabel.textContent =
+        used === 0 ? "No guesses yet" : used === 1 ? "1 guess" : used + " guesses";
     }
-    function renderTries() {
-      for (let i = 0; i < MAX_GUESSES; i++) {
-        document.getElementById("pip-" + i).classList.toggle("used", i < used);
-      }
-      const left = MAX_GUESSES - used;
-      triesLabel.textContent = left === 1 ? "1 guess left" : left + " guesses left";
+
+    // Turn "Xherdan Shaqiri" into "X. S." for the Hint.
+    function initials(name) {
+      return name
+        .split(/\s+/)
+        .map((word) => word[0].toUpperCase() + ".")
+        .join(" ");
     }
 
     // A wrong pick: shake the search box and flash a red outline that fades.
@@ -774,26 +830,43 @@
 
       if (name === TARGET.name) {
         used++;
-        renderTries();
+        renderGuesses();
         finish(true);
         return;
       }
 
-      // Wrong: burn a guess and open up the next club.
+      // Wrong: count the guess and open up the next club.
       used++;
-      renderTries();
+      renderGuesses();
       flashWrong();
       if (shown < TARGET.clubs.length) revealStep(shown++);
 
       query = "";
       renderQuery();
-
-      if (used >= MAX_GUESSES) finish(false);
     }
 
-    // ---- The game loop: just the timer ----
+    // ---- Hint & Reveal ----
+    // Hint shows the player's initials. It only does something once.
+    function doHint() {
+      if (initialsEl.textContent) return false;
+      initialsEl.textContent = initials(TARGET.name);
+      return true;
+    }
+
+    // ---- The game loop: the timer plus the two charge bars ----
+    function updateTool(btn, tool, now) {
+      const chargeStart = tool.readyAt - tool.duration;
+      const pct = Math.max(0, Math.min(1, (now - chargeStart) / tool.duration));
+      btn.querySelector(".fill").style.width = (pct * 100) + "%";
+      tool.ready = now >= tool.readyAt;
+      btn.classList.toggle("ready", tool.ready);
+    }
+
     function loop() {
-      timerEl.textContent = format((performance.now() - startTime) / 1000);
+      const now = performance.now();
+      timerEl.textContent = format((now - startTime) / 1000);
+      updateTool(hintBtn, hint, now);
+      updateTool(revealBtn, reveal, now);
     }
 
     // Called when the round ends: stop the clock, show the whole path, pop up.
@@ -813,9 +886,9 @@
       qtextEl.textContent = "";
       dropdownEl.classList.remove("show");
 
-      document.getElementById("resultTitle").textContent = won ? "Correct!" : "Out of guesses";
+      document.getElementById("resultTitle").textContent = won ? "Correct!" : "Revealed";
       document.getElementById("answerName").textContent = TARGET.name;
-      document.getElementById("statGuesses").textContent = used + "/" + MAX_GUESSES;
+      document.getElementById("statGuesses").textContent = used;
       document.getElementById("statTime").textContent = format(seconds);
 
       // small pause so the player sees the path fill before the pop-up
@@ -829,11 +902,12 @@
     finished = false;
 
     buildPath();
-    buildPips();
     revealStep(shown++);      // the first club is free
-    renderTries();
+    renderGuesses();
 
     startTime = performance.now();
+    hint   = { duration: HINT_UNLOCK,   readyAt: startTime + HINT_UNLOCK,   ready: false };
+    reveal = { duration: REVEAL_UNLOCK, readyAt: startTime + REVEAL_UNLOCK, ready: false };
     tickHandle = setInterval(loop, 100);
 
     // Shrink the title font until it fits on a single line at any phone width.
@@ -853,6 +927,15 @@
     window.addEventListener("resize", fitTitle);
     // re-fit once Bebas Neue has actually loaded (its metrics differ from the fallback)
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+
+    hintBtn.addEventListener("click", () => {
+      if (finished || !hint.ready) return;
+      if (doHint()) hint.readyAt = performance.now() + HINT_COOLDOWN;
+    });
+    revealBtn.addEventListener("click", () => {
+      if (finished || !reveal.ready) return;
+      finish(false);          // hands you the answer and ends the round
+    });
   </script>
 </body>
 </html>
