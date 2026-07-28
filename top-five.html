@@ -17,6 +17,8 @@
 
   <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
   <link rel="stylesheet" href="fonts.css" />
+  <!-- Shared tokens, end card and leaderboard rows -->
+  <link rel="stylesheet" href="fixture.css" />
   <style>
     /* ---------- Fixture design system ---------- */
     :root {
@@ -372,76 +374,6 @@
     .dropdown li:hover, .dropdown li.active { background: rgba(198, 138, 46, 0.16); }
     .dropdown .empty { color: #8b9490; font-weight: 500; cursor: default; }
 
-    /* ---------- Finish pop-up (modal) + leaderboard ---------- */
-    .overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 1000;   /* above the keyboard, dropdown, and Hint/Reveal labels */
-      background: rgba(7, 42, 32, 0.78);
-      backdrop-filter: blur(3px);
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .overlay.show { display: flex; }
-
-    .modal {
-      background: var(--cream);
-      color: var(--text-dark);
-      width: 100%;
-      max-width: 380px;
-      border-radius: 18px;
-      padding: 26px 22px;
-      text-align: center;
-      animation: pop 0.35s ease;
-    }
-    .modal h2 {
-      margin: 0 0 4px;
-      font-size: 32px;
-      font-family: var(--display);
-      font-weight: 400;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-    .modal .your-time { font-size: 15px; color: rgba(11, 61, 46, 0.7); margin: 0 0 18px; }
-    .modal .your-time strong { color: var(--gold); font-size: 26px; font-family: var(--display); font-weight: 400; }
-
-    .lb-title {
-      text-transform: uppercase;
-      letter-spacing: 1.4px;
-      font-size: 11px;
-      font-weight: 600;
-      color: rgba(11, 61, 46, 0.5);
-      margin-bottom: 10px;
-    }
-    .leaderboard { list-style: none; margin: 0; padding: 0; text-align: left; }
-    .leaderboard li {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      margin-bottom: 8px;
-      background: rgba(11, 61, 46, 0.06);
-      font-size: 16px;
-    }
-    .leaderboard li:last-child { margin-bottom: 0; }
-    .leaderboard li.you { background: var(--gold); font-weight: 800; }
-    .lb-rank {
-      flex: 0 0 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: rgba(11, 61, 46, 0.12);
-      color: var(--text-dark);
-      font-weight: 800;
-      font-size: 14px;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .leaderboard li.you .lb-rank { background: rgba(11, 61, 46, 0.2); }
-    .lb-name { flex: 1; font-weight: 600; }
-    .leaderboard li.you .lb-name { font-weight: 800; }
-    .lb-time { font-variant-numeric: tabular-nums; font-weight: 800; }
   </style>
 </head>
 <body>
@@ -487,16 +419,7 @@
     <div class="keyboard" id="keyboard"></div>
   </main>
 
-  <!-- The finish pop-up, hidden until all five are found -->
-  <div class="overlay" id="overlay">
-    <div class="modal">
-      <h2>Finished!</h2>
-      <p class="your-time">Your time: <strong id="yourTime">0:00</strong></p>
-      <div class="lb-title">Leaderboard</div>
-      <ol class="leaderboard" id="leaderboard"></ol>
-    </div>
-  </div>
-
+  <script src="fixture.js"></script>
   <script>
     // =========================================================
     //  THE ONE HARDCODED QUESTION
@@ -533,12 +456,7 @@
       ...WRONG.map((n) => ({ name: n, rank: 0 })),
     ].sort((a, b) => a.name.localeCompare(b.name));
 
-    // ---- Fixed rivals for the leaderboard (times are in seconds) ----
-    const COMPETITORS = [
-      { name: "Eren", seconds: 45 },
-      { name: "Mina", seconds: 43 },
-    ];
-    const PLAYER_NAME = "Kazim";
+    const GAME_ID = "topfive";     // how this game is known to fixture.js
 
     // ---- Grab the parts of the page we'll update ----
     const slotsEl     = document.getElementById("slots");
@@ -547,15 +465,13 @@
     const qtextEl     = document.getElementById("qtext");      // the typed text itself
     const keyboardEl  = document.getElementById("keyboard");
     const dropdownEl  = document.getElementById("dropdown");
-    const overlayEl   = document.getElementById("overlay");
-    const yourTimeEl  = document.getElementById("yourTime");
-    const leaderboardEl = document.getElementById("leaderboard");
     const hintBtn     = document.getElementById("hintBtn");
     const revealBtn   = document.getElementById("revealBtn");
 
     let query = "";    // what the player has typed on the built-in keyboard
 
     // ---- Game state ----
+    let usedHelp = false;  // true once a Hint or Reveal has been used
     let solved;        // a Set of ranks already filled in
     let startTime;     // when the clock started
     let tickHandle;    // the repeating game loop
@@ -753,38 +669,33 @@
       updateTool(revealBtn, reveal, now);
     }
 
-    // Called when all five are filled: stop clock, show pop-up + leaderboard.
+    // Called when all five are filled: stop the clock and show the end card.
     function finish() {
       finished = true;
       clearInterval(tickHandle);
       const seconds = (performance.now() - startTime) / 1000;
       timerEl.textContent = format(seconds);
-      yourTimeEl.textContent = format(seconds);
-
-      const entries = [
-        ...COMPETITORS,
-        { name: PLAYER_NAME, seconds: seconds, you: true },
-      ].sort((a, b) => a.seconds - b.seconds);
-
-      leaderboardEl.innerHTML = "";
-      entries.forEach((entry, i) => {
-        const li = document.createElement("li");
-        if (entry.you) li.classList.add("you");
-        li.innerHTML =
-          '<span class="lb-rank">' + (i + 1) + '</span>' +
-          '<span class="lb-name">' + entry.name + (entry.you ? " (You)" : "") + '</span>' +
-          '<span class="lb-time">' + format(entry.seconds) + '</span>';
-        leaderboardEl.appendChild(li);
-      });
-
       dropdownEl.classList.remove("show");
-      // small pause so the player sees the last row fill before the pop-up
-      setTimeout(() => overlayEl.classList.add("show"), 1200);
+
+      Fixture.saveResult(GAME_ID, seconds, !usedHelp);
+      // small pause so the player sees the last row fill before the card
+      setTimeout(() => Fixture.showEndcard({
+        gameId: GAME_ID, seconds: seconds, title: "Finished!",
+      }), 1200);
     }
 
     // ---- Set up the game (runs once when the page loads) ----
+    // One go per day: if today's already done, show the end card instead.
+    const alreadyPlayed = Fixture.getResult(GAME_ID);
+    if (alreadyPlayed) {
+      Fixture.showEndcard({
+        gameId: GAME_ID, seconds: alreadyPlayed.seconds,
+        title: "Finished!", locked: true,
+      });
+    }
+
     solved = new Set();
-    finished = false;
+    finished = !!alreadyPlayed;      // a finished game ignores every tap
     buildSlots();
 
     startTime = performance.now();
@@ -812,11 +723,11 @@
 
     hintBtn.addEventListener("click", () => {
       if (finished || !hint.ready) return;
-      if (doHint()) hint.readyAt = performance.now() + hint.duration;
+      if (doHint()) { usedHelp = true; hint.readyAt = performance.now() + hint.duration; }
     });
     revealBtn.addEventListener("click", () => {
       if (finished || !reveal.ready) return;
-      if (doReveal()) reveal.readyAt = performance.now() + reveal.duration;
+      if (doReveal()) { usedHelp = true; reveal.readyAt = performance.now() + reveal.duration; }
     });
   </script>
 </body>

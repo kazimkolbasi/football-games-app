@@ -17,6 +17,8 @@
 
   <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
   <link rel="stylesheet" href="fonts.css" />
+  <!-- Shared tokens, end card and leaderboard rows -->
+  <link rel="stylesheet" href="fixture.css" />
   <style>
     /* ---------- Fixture design system (kept in sync with index.html) ---------- */
     :root {
@@ -357,64 +359,6 @@
     .key.spacebar { flex: 1.5; }
     .key.icon { display: flex; align-items: center; justify-content: center; }
 
-    /* ---------- Finish pop-up (modal) ---------- */
-    .overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      background: rgba(7, 42, 32, 0.78);
-      backdrop-filter: blur(3px);
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .overlay.show { display: flex; }
-
-    .modal {
-      background: var(--cream);
-      color: var(--text-dark);
-      width: 100%;
-      max-width: 380px;
-      border-radius: 18px;
-      padding: 26px 22px;
-      text-align: center;
-      animation: pop 0.35s ease;
-    }
-    .modal h2 {
-      margin: 0 0 4px;
-      font-size: 32px;
-      font-family: var(--display);
-      font-weight: 400;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-    .modal .note { font-size: 13px; color: rgba(11, 61, 46, 0.7); margin: 0 0 18px; }
-    .stats { display: flex; gap: 12px; }
-    .stat {
-      flex: 1;
-      background: rgba(11, 61, 46, 0.06);
-      border-radius: 14px;
-      padding: 14px 8px;
-    }
-    .stat-num {
-      display: block;
-      font-family: var(--display);
-      font-weight: 400;
-      font-size: 34px;
-      line-height: 1;
-      color: var(--gold);
-      font-variant-numeric: tabular-nums;
-    }
-    .stat-label {
-      display: block;
-      margin-top: 5px;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 1.4px;
-      text-transform: uppercase;
-      color: rgba(11, 61, 46, 0.5);
-    }
   </style>
 </head>
 <body>
@@ -451,17 +395,7 @@
     <div class="keyboard" id="keyboard"></div>
   </main>
 
-  <!-- The finish pop-up, hidden until the round ends -->
-  <div class="overlay" id="overlay">
-    <div class="modal">
-      <h2 id="resultTitle">Grid complete!</h2>
-      <div class="stats">
-        <div class="stat"><span class="stat-num" id="statFilled">0/9</span><span class="stat-label">Your squares</span></div>
-        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time</span></div>
-      </div>
-    </div>
-  </div>
-
+  <script src="fixture.js"></script>
   <script>
     // =========================================================
     //  THE PLAYER DATABASE
@@ -628,6 +562,9 @@
 
     // ---- Grab the parts of the page we'll update ----
     const gridEl      = document.getElementById("grid");
+    const GAME_ID = "tictac";    // how this game is known to fixture.js
+    let usedHelp = false;        // true once a Hint or Reveal has been used
+
     const hintBtn     = document.getElementById("hintBtn");
     const revealBtn   = document.getElementById("revealBtn");
     const timerEl     = document.getElementById("timer");
@@ -635,7 +572,6 @@
     const qtextEl     = document.getElementById("qtext");
     const keyboardEl  = document.getElementById("keyboard");
     const dropdownEl  = document.getElementById("dropdown");
-    const overlayEl   = document.getElementById("overlay");
 
     let query = "";
     let filled;        // { "r,c": { player, how } } for every square answered
@@ -924,22 +860,27 @@
       qtextEl.textContent = "";
       dropdownEl.classList.remove("show");
 
-      // only the squares you worked out yourself count as yours
-      const yours = Object.values(filled).filter((f) => f.how === "filled").length;
-
-      document.getElementById("resultTitle").textContent = "Grid complete!";
-      document.getElementById("statFilled").textContent = yours + "/9";
-      document.getElementById("statTime").textContent =
-        format((performance.now() - startTime) / 1000);
-
-      // small pause so the player sees the last square fill before the pop-up
-      setTimeout(() => overlayEl.classList.add("show"), 1200);
+      const seconds = (performance.now() - startTime) / 1000;
+      Fixture.saveResult(GAME_ID, seconds, !usedHelp);
+      // small pause so the player sees the last square fill before the card
+      setTimeout(() => Fixture.showEndcard({
+        gameId: GAME_ID, seconds: seconds, title: "Grid complete!",
+      }), 1200);
     }
 
     // ---- Set up the game (runs once when the page loads) ----
+    // One go per day: if today's already done, show the end card instead.
+    const alreadyPlayed = Fixture.getResult(GAME_ID);
+    if (alreadyPlayed) {
+      Fixture.showEndcard({
+        gameId: GAME_ID, seconds: alreadyPlayed.seconds,
+        title: "Grid complete!", locked: true,
+      });
+    }
+
     filled = {};
     usedNames = new Set();
-    finished = false;
+    finished = !!alreadyPlayed;      // a finished game ignores every tap
 
     buildGrid();
     selectNextEmpty();          // start on the top-left square
@@ -954,11 +895,11 @@
 
     hintBtn.addEventListener("click", () => {
       if (finished || !hint.ready) return;
-      if (doHint()) hint.readyAt = performance.now() + HINT_UNLOCK;
+      if (doHint()) { usedHelp = true; hint.readyAt = performance.now() + HINT_UNLOCK; }
     });
     revealBtn.addEventListener("click", () => {
       if (finished || !reveal.ready) return;
-      if (doReveal()) reveal.readyAt = performance.now() + REVEAL_COOLDOWN;
+      if (doReveal()) { usedHelp = true; reveal.readyAt = performance.now() + REVEAL_COOLDOWN; }
     });
   </script>
 </body>

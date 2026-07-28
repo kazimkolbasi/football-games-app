@@ -17,6 +17,8 @@
 
   <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
   <link rel="stylesheet" href="fonts.css" />
+  <!-- Shared tokens, end card and leaderboard rows -->
+  <link rel="stylesheet" href="fixture.css" />
   <style>
     /* ---------- Fixture design system (kept in sync with index.html) ---------- */
     :root {
@@ -407,83 +409,6 @@
     /* a name already guessed is crossed out — tapping it costs you nothing */
     .dropdown li.spent { color: #8b9490; text-decoration: line-through; }
 
-    /* ---------- Finish pop-up (modal) ---------- */
-    .overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 1000;   /* above the keyboard and dropdown */
-      background: rgba(7, 42, 32, 0.78);
-      backdrop-filter: blur(3px);
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .overlay.show { display: flex; }
-
-    .modal {
-      background: var(--cream);
-      color: var(--text-dark);
-      width: 100%;
-      max-width: 380px;
-      border-radius: 18px;
-      padding: 26px 22px;
-      text-align: center;
-      animation: pop 0.35s ease;
-    }
-    .modal h2 {
-      margin: 0 0 4px;
-      font-size: 32px;
-      font-family: var(--display);
-      font-weight: 400;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-    .modal .answer {
-      font-size: 15px;
-      color: rgba(11, 61, 46, 0.7);
-      margin: 0 0 20px;
-    }
-    .modal .answer strong {
-      display: block;
-      margin-top: 2px;
-      color: var(--text-dark);
-      font-family: var(--display);
-      font-weight: 400;
-      font-size: 30px;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-
-    /* two stat blocks: guesses used + time */
-    .stats {
-      display: flex;
-      gap: 12px;
-    }
-    .stat {
-      flex: 1;
-      background: rgba(11, 61, 46, 0.06);
-      border-radius: 14px;
-      padding: 14px 8px;
-    }
-    .stat-num {
-      display: block;
-      font-family: var(--display);
-      font-weight: 400;
-      font-size: 34px;
-      line-height: 1;
-      color: var(--gold);
-      font-variant-numeric: tabular-nums;
-    }
-    .stat-label {
-      display: block;
-      margin-top: 5px;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 1.4px;
-      text-transform: uppercase;
-      color: rgba(11, 61, 46, 0.5);
-    }
   </style>
 </head>
 <body>
@@ -534,18 +459,7 @@
     <div class="keyboard" id="keyboard"></div>
   </main>
 
-  <!-- The finish pop-up, hidden until the round ends -->
-  <div class="overlay" id="overlay">
-    <div class="modal">
-      <h2 id="resultTitle">Correct!</h2>
-      <p class="answer">The player was<strong id="answerName"></strong></p>
-      <div class="stats">
-        <div class="stat"><span class="stat-num" id="statGuesses">1</span><span class="stat-label">Guesses</span></div>
-        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time</span></div>
-      </div>
-    </div>
-  </div>
-
+  <script src="fixture.js"></script>
   <script>
     // =========================================================
     //  THE PUZZLES
@@ -663,8 +577,10 @@
     const qtextEl     = document.getElementById("qtext");     // the typed text itself
     const keyboardEl  = document.getElementById("keyboard");
     const dropdownEl  = document.getElementById("dropdown");
-    const overlayEl   = document.getElementById("overlay");
 
+    const GAME_ID = "career";   // how this game is known to fixture.js
+
+    let usedHelp = false;  // true once a Hint or Reveal has been used
     let query = "";      // what the player has typed on the built-in keyboard
     let shown;           // how many clubs are currently visible (starts at 1)
     let used;            // how many guesses have been made
@@ -886,20 +802,27 @@
       qtextEl.textContent = "";
       dropdownEl.classList.remove("show");
 
-      document.getElementById("resultTitle").textContent = won ? "Correct!" : "Revealed";
-      document.getElementById("answerName").textContent = TARGET.name;
-      document.getElementById("statGuesses").textContent = used;
-      document.getElementById("statTime").textContent = format(seconds);
-
-      // small pause so the player sees the path fill before the pop-up
-      setTimeout(() => overlayEl.classList.add("show"), 1200);
+      Fixture.saveResult(GAME_ID, seconds, !usedHelp);
+      // small pause so the player sees the path fill before the card
+      setTimeout(() => Fixture.showEndcard({
+        gameId: GAME_ID, seconds: seconds, title: won ? "Correct!" : "Revealed",
+      }), 1200);
     }
 
     // ---- Set up the game (runs once when the page loads) ----
+    // One go per day: if today's already done, show the end card instead.
+    const alreadyPlayed = Fixture.getResult(GAME_ID);
+    if (alreadyPlayed) {
+      Fixture.showEndcard({
+        gameId: GAME_ID, seconds: alreadyPlayed.seconds,
+        title: "Correct!", locked: true,
+      });
+    }
+
     shown = 0;
     used = 0;
     guessed = new Set();
-    finished = false;
+    finished = !!alreadyPlayed;      // a finished game ignores every tap
 
     buildPath();
     revealStep(shown++);      // the first club is free
@@ -930,10 +853,11 @@
 
     hintBtn.addEventListener("click", () => {
       if (finished || !hint.ready) return;
-      if (doHint()) hint.readyAt = performance.now() + HINT_COOLDOWN;
+      if (doHint()) { usedHelp = true; hint.readyAt = performance.now() + HINT_COOLDOWN; }
     });
     revealBtn.addEventListener("click", () => {
       if (finished || !reveal.ready) return;
+      usedHelp = true;
       finish(false);          // hands you the answer and ends the round
     });
   </script>

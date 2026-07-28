@@ -17,23 +17,9 @@
 
   <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
   <link rel="stylesheet" href="fonts.css" />
+  <!-- Shared tokens, tab bar, end card, leaderboard rows -->
+  <link rel="stylesheet" href="fixture.css" />
   <style>
-    /* ---------- Fixture design system (shared with the games) ---------- */
-    :root {
-      --pitch: #0b3d2e;             /* base */
-      --pitch-dark: #072a20;        /* deeper end of the background gradient */
-      --cream: #f2efe6;             /* all text */
-      --gold: #c68a2e;              /* the single accent */
-      --text-dark: #0b3d2e;         /* text sitting on top of gold or cream */
-
-      --card: rgba(255, 255, 255, 0.05);
-      --card-border: rgba(242, 239, 230, 0.16);
-      --muted: rgba(242, 239, 230, 0.55);
-
-      --display: 'Bebas Neue', 'Arial Narrow', sans-serif;
-      --body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-
     * { box-sizing: border-box; }
 
     /* Lock the page to the screen: no scrolling, no rubber-band bounce. */
@@ -52,7 +38,8 @@
       color: var(--cream);
       display: flex;
       justify-content: center;
-      padding: max(14px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+      /* room for the tab bar at the bottom */
+      padding: max(14px, env(safe-area-inset-top)) 16px calc(var(--tabbar) + env(safe-area-inset-bottom));
       -webkit-user-select: none;
       user-select: none;
       touch-action: manipulation;   /* no double-tap zoom */
@@ -64,10 +51,7 @@
       display: flex;
       flex-direction: column;
       min-height: 0;
-      overflow-y: auto;              /* scroll only if a small screen can't fit it all */
-      -webkit-overflow-scrolling: touch;
     }
-    .home::-webkit-scrollbar { display: none; }
 
     /* ---------- Top: brand + date + streak ---------- */
     .home-head {
@@ -76,7 +60,7 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 22px;
+      margin-bottom: 16px;
     }
     .brand {
       font-family: var(--display);
@@ -120,11 +104,48 @@
       color: var(--muted);
     }
 
-    /* ---------- Section labels ---------- */
-    .section-label {
+    /* ---------- Today's running total ---------- */
+    .today {
+      flex: 0 0 auto;
       display: flex;
-      align-items: baseline;
-      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+    }
+    .today-num {
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 38px;
+      line-height: 0.9;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.5px;
+    }
+    .today-text { flex: 1 1 auto; min-width: 0; }
+    .today-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .today-progress { display: flex; gap: 5px; margin-top: 7px; }
+    .dot {
+      width: 100%;
+      max-width: 30px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(242, 239, 230, 0.16);
+    }
+    .dot.on { background: var(--gold); }
+
+    /* ---------- Section label ---------- */
+    .section-label {
+      flex: 0 0 auto;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 1.6px;
@@ -132,47 +153,48 @@
       color: var(--muted);
       margin: 0 2px 10px;
     }
-    /* the link through to the full leaderboards */
-    .see-all {
-      color: var(--gold);
-      text-decoration: none;
-      letter-spacing: 1.2px;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .see-all:active { opacity: 0.6; }
 
     /* ---------- Game cards ---------- */
     .games {
-      flex: 0 0 auto;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;              /* only scrolls on very small screens */
+      -webkit-overflow-scrolling: touch;
       display: flex;
       flex-direction: column;
+      gap: 10px;
     }
+    .games::-webkit-scrollbar { display: none; }
+
     .game-card {
+      flex: 0 0 auto;
       display: flex;
       align-items: center;
       gap: 12px;
       background: var(--card);
       border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 15px 16px;
-      margin-bottom: 10px;
+      border-radius: 18px;
+      padding: 17px 18px;
       text-decoration: none;
       color: inherit;
       -webkit-tap-highlight-color: transparent;
+      transition: background 0.18s ease;
     }
     .game-card:active { background: rgba(255, 255, 255, 0.09); }
-    .game-card.locked { opacity: 0.5; }
+    /* a game you've already finished today */
+    .game-card.done { border-color: rgba(198, 138, 46, 0.5); }
+
     .gc-text { flex: 1 1 auto; min-width: 0; }
     .gc-name {
       font-family: var(--display);
       font-weight: 400;
-      font-size: 20px;
+      font-size: 22px;
       line-height: 1.05;
       letter-spacing: 0.4px;
       text-transform: uppercase;
     }
     .gc-sub {
-      margin-top: 3px;
+      margin-top: 4px;
       font-size: 12.5px;
       font-weight: 500;
       color: var(--muted);
@@ -181,102 +203,35 @@
       text-overflow: ellipsis;
     }
 
-    /* right-side actions */
-    .gc-action { flex: 0 0 auto; }
     .play {
+      flex: 0 0 auto;
       background: var(--gold);
       color: var(--text-dark);
       font-weight: 800;
       letter-spacing: 1px;
       font-size: 12px;
       text-transform: uppercase;
-      padding: 8px 18px;
+      padding: 9px 20px;
       border-radius: 999px;
     }
-    .status {
-      text-align: right;
-      line-height: 1;
-    }
-    .status-num {
+    /* once played, the pill is replaced by your time */
+    .result { flex: 0 0 auto; text-align: right; line-height: 1; }
+    .result-time {
       font-family: var(--display);
       font-weight: 400;
+      font-size: 26px;
       color: var(--gold);
-      font-size: 22px;
+      font-variant-numeric: tabular-nums;
     }
-    .status-label {
+    .result-label {
       display: block;
-      margin-top: 3px;
+      margin-top: 4px;
       font-size: 9px;
       font-weight: 700;
-      letter-spacing: 1.4px;
+      letter-spacing: 1.3px;
       text-transform: uppercase;
       color: var(--muted);
     }
-    .locked-tag {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 1.4px;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    /* ---------- Friends today ---------- */
-    .friends { flex: 0 0 auto; margin-top: 18px; }
-    .friend-row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
-    }
-    .friend-row:last-child { margin-bottom: 0; }
-    .friend-rank {
-      font-family: var(--display);
-      font-weight: 400;
-      color: var(--gold);
-      font-size: 18px;
-      width: 14px;
-      text-align: center;
-    }
-    .friend-name { flex: 1 1 auto; font-weight: 600; font-size: 15px; }
-    .friend-score {
-      font-family: var(--display);
-      font-weight: 400;
-      font-size: 20px;
-    }
-    /* the player's own row is filled gold */
-    .friend-row.you {
-      background: var(--gold);
-      border-color: var(--gold);
-      color: var(--text-dark);
-    }
-    .friend-row.you .friend-rank,
-    .friend-row.you .friend-score { color: var(--text-dark); }
-
-    /* ---------- "Coming soon" toast ---------- */
-    .toast {
-      position: fixed;
-      left: 50%;
-      bottom: calc(env(safe-area-inset-bottom) + 28px);
-      transform: translateX(-50%) translateY(20px);
-      background: var(--cream);
-      color: var(--text-dark);
-      font-weight: 700;
-      font-size: 13px;
-      padding: 11px 20px;
-      border-radius: 999px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-      z-index: 20;
-    }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
@@ -292,81 +247,72 @@
       </div>
     </header>
 
-    <section class="games">
-      <div class="section-label">Today's Games</div>
-
-      <a class="game-card" href="top-five.html">
-        <div class="gc-text">
-          <div class="gc-name">Top Five</div>
-          <div class="gc-sub">Most Champions League goals</div>
-        </div>
-        <span class="gc-action play">Play</span>
-      </a>
-
-      <a class="game-card" href="tic-tac-toe.html">
-        <div class="gc-text">
-          <div class="gc-name">Tic Tac Toe</div>
-          <div class="gc-sub">Club × nationality grid</div>
-        </div>
-        <span class="gc-action play">Play</span>
-      </a>
-
-      <a class="game-card" href="missing-xi.html">
-        <div class="gc-text">
-          <div class="gc-name">Missing XI</div>
-          <div class="gc-sub">Complete the lineup</div>
-        </div>
-        <span class="gc-action play">Play</span>
-      </a>
-
-      <a class="game-card" href="career-path.html">
-        <div class="gc-text">
-          <div class="gc-name">Career Path</div>
-          <div class="gc-sub">Guess from the clubs</div>
-        </div>
-        <span class="gc-action play">Play</span>
-      </a>
-
-      <a class="game-card" href="crossover.html">
-        <div class="gc-text">
-          <div class="gc-name">Crossover</div>
-          <div class="gc-sub">Two clues, one player</div>
-        </div>
-        <span class="gc-action play">Play</span>
-      </a>
-    </section>
-
-    <section class="friends">
-      <div class="section-label">
-        Friends Today
-        <a class="see-all" href="leaderboard.html">All boards</a>
+    <div class="today">
+      <span class="today-num" id="todayTotal">—</span>
+      <div class="today-text">
+        <div class="today-label" id="todayLabel">Today's total</div>
+        <div class="today-progress" id="todayProgress"></div>
       </div>
-      <div class="friend-row">
-        <span class="friend-rank">1</span>
-        <span class="friend-name">Mina</span>
-        <span class="friend-score">24</span>
-      </div>
-      <div class="friend-row you">
-        <span class="friend-rank">2</span>
-        <span class="friend-name">You</span>
-        <span class="friend-score">21</span>
-      </div>
-      <div class="friend-row">
-        <span class="friend-rank">3</span>
-        <span class="friend-name">Eren</span>
-        <span class="friend-score">19</span>
-      </div>
-    </section>
+    </div>
+
+    <div class="section-label">Today's Games</div>
+    <section class="games" id="games"></section>
   </main>
 
+  <script src="fixture.js"></script>
   <script>
-    // Show today's real date, e.g. "Thursday 16 July"
+    // Show today's real date, e.g. "Tuesday 28 July"
     (function () {
       var d = new Date();
       var day = d.toLocaleDateString('en-GB', { weekday: 'long' });
       var date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
       document.getElementById('date').textContent = day + ' ' + date;
     })();
+
+    // Build the game list. A game you've finished shows your time instead
+    // of a Play button — tapping it reopens that game's end card.
+    (function () {
+      var results = Fixture.getResults();
+      var gamesEl = document.getElementById('games');
+      var playedCount = 0;
+      var total = 0;
+
+      Fixture.GAMES.forEach(function (game) {
+        var done = results[game.id];
+        if (done) { playedCount++; total += done.seconds; }
+
+        var card = document.createElement('a');
+        card.className = 'game-card' + (done ? ' done' : '');
+        card.href = game.file;
+        card.innerHTML =
+          '<div class="gc-text">' +
+            '<div class="gc-name">' + game.name + '</div>' +
+            '<div class="gc-sub">' + game.sub + '</div>' +
+          '</div>' +
+          (done
+            ? '<span class="result"><span class="result-time">' + Fixture.formatTime(done.seconds) +
+              '</span><span class="result-label">Done</span></span>'
+            : '<span class="play">Play</span>');
+        gamesEl.appendChild(card);
+      });
+
+      // The running total across whatever you've played so far
+      document.getElementById('todayTotal').textContent =
+        playedCount ? Fixture.formatTime(total) : '—';
+      document.getElementById('todayLabel').textContent =
+        playedCount === Fixture.GAMES.length
+          ? "Today's total — all done"
+          : "Today's total · " + playedCount + " of " + Fixture.GAMES.length;
+
+      var prog = document.getElementById('todayProgress');
+      Fixture.GAMES.forEach(function (game) {
+        var dot = document.createElement('span');
+        dot.className = 'dot' + (results[game.id] ? ' on' : '');
+        prog.appendChild(dot);
+      });
+    })();
+
+    Fixture.renderTabBar('play');
   </script>
 </body>
 </html>

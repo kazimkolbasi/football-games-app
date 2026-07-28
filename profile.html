@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Fixture — Profile</title>
+
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fixture" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
+
+  <link rel="stylesheet" href="fonts.css" />
+  <link rel="stylesheet" href="fixture.css" />
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--pitch-dark);
+    }
+    body {
+      margin: 0;
+      position: fixed;
+      inset: 0;
+      font-family: var(--body);
+      background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
+      color: var(--cream);
+      display: flex;
+      justify-content: center;
+      padding: max(14px, env(safe-area-inset-top)) 16px calc(var(--tabbar) + env(safe-area-inset-bottom));
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .profile {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .profile::-webkit-scrollbar { display: none; }
+
+    h1 {
+      flex: 0 0 auto;
+      font-family: var(--display);
+      font-weight: 400;
+      color: var(--gold);
+      font-size: 38px;
+      line-height: 1;
+      letter-spacing: 0.5px;
+      margin: 0 0 18px;
+      text-transform: uppercase;
+    }
+
+    /* ---------- Who you are ---------- */
+    .me {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+    }
+    .me-avatar {
+      flex: 0 0 54px;
+      height: 54px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: var(--text-dark);
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 26px;
+      line-height: 1;
+      padding-top: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .me-name { font-family: var(--display); font-weight: 400; font-size: 26px; letter-spacing: 0.4px; text-transform: uppercase; }
+    .me-sub { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+
+    /* ---------- Three headline numbers ---------- */
+    .stats { flex: 0 0 auto; display: flex; gap: 10px; margin-bottom: 22px; }
+    .stat {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 15px 6px;
+      text-align: center;
+    }
+    .stat-num {
+      display: block;
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 30px;
+      line-height: 1;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label {
+      display: block;
+      margin-top: 6px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .section-label {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 2px 10px;
+    }
+
+    /* ---------- Today's results, game by game ---------- */
+    .results { flex: 0 0 auto; margin-bottom: 22px; }
+    .result-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+    .result-row:last-child { margin-bottom: 0; }
+    .rr-name { flex: 1 1 auto; font-weight: 600; font-size: 14px; }
+    .rr-time {
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 22px;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .rr-time.pending { color: var(--muted); font-size: 13px; font-family: var(--body); font-weight: 600; }
+
+    /* ---------- Settings rows ---------- */
+    .settings { flex: 0 0 auto; margin-bottom: 8px; }
+    .setting {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 15px 16px;
+      margin-bottom: 8px;
+      color: var(--cream);
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .setting:active { background: rgba(255, 255, 255, 0.09); }
+    .setting .chev { margin-left: auto; color: var(--muted); }
+    .setting.danger { color: #e5848a; border-color: rgba(229, 72, 77, 0.35); }
+
+    .note {
+      flex: 0 0 auto;
+      padding: 6px 4px 0;
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="profile">
+    <h1>Profile</h1>
+
+    <div class="me">
+      <span class="me-avatar">K</span>
+      <div>
+        <div class="me-name">Kazim</div>
+        <div class="me-sub" id="meSub">Playing since day one</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="stat-num">12</span><span class="stat-label">Streak</span></div>
+      <div class="stat"><span class="stat-num" id="statPlayed">0/5</span><span class="stat-label">Today</span></div>
+      <div class="stat"><span class="stat-num" id="statTotal">—</span><span class="stat-label">Total time</span></div>
+    </div>
+
+    <div class="section-label">Today's Results</div>
+    <section class="results" id="results"></section>
+
+    <div class="section-label">Settings</div>
+    <section class="settings">
+      <button class="setting">Notifications<span class="chev">›</span></button>
+      <button class="setting">Add friends<span class="chev">›</span></button>
+      <button class="setting">How scoring works<span class="chev">›</span></button>
+      <button class="setting danger" id="resetBtn">Reset today's scores<span class="chev">›</span></button>
+    </section>
+
+    <p class="note">
+      Trial build. Scores last while the app is open and clear when you quit —
+      real ones need an account.
+    </p>
+  </main>
+
+  <script src="fixture.js"></script>
+  <script>
+    (function () {
+      var results = Fixture.getResults();
+      var played = 0, total = 0;
+
+      var listEl = document.getElementById('results');
+      Fixture.GAMES.forEach(function (game) {
+        var done = results[game.id];
+        if (done) { played++; total += done.seconds; }
+
+        var row = document.createElement('div');
+        row.className = 'result-row';
+        row.innerHTML =
+          '<span class="rr-name">' + game.name + '</span>' +
+          (done
+            ? '<span class="rr-time">' + Fixture.formatTime(done.seconds) + '</span>'
+            : '<span class="rr-time pending">Not played</span>');
+        listEl.appendChild(row);
+      });
+
+      document.getElementById('statPlayed').textContent = played + '/' + Fixture.GAMES.length;
+      document.getElementById('statTotal').textContent = played ? Fixture.formatTime(total) : '—';
+      document.getElementById('meSub').textContent = 'Puzzle No. ' + Fixture.dayNumber();
+    })();
+
+    // Handy while testing: wipes today so every game can be played again.
+    document.getElementById('resetBtn').addEventListener('click', function () {
+      Fixture.clearToday();
+      window.location.reload();
+    });
+
+    Fixture.renderTabBar('profile');
+  </script>
+</body>
+</html>

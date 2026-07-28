@@ -28,13 +28,14 @@ instead of ruining a whole week.
 
 ---
 
-## The three axes
+## Where each board lives
 
-Six boards × two scopes × four periods = 48 leaderboards, presented as **one
-screen with three selectors**.
+**Per-game boards live inside the game.** Finishing a game opens a full-screen
+end card: your time, your rank, and that game's standings for today. It's also
+what you see if you open a game you've already played.
 
-### Boards
-Overall · Top Five · Tic Tac Toe · Missing XI · Career Path · Crossover
+**The Leaderboards tab is the overall board only** — your five times added
+together — with two scopes and four periods.
 
 ### Scopes
 | Scope | Who | Notes |

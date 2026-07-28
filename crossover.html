@@ -17,6 +17,8 @@
 
   <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
   <link rel="stylesheet" href="fonts.css" />
+  <!-- Shared tokens, end card and leaderboard rows -->
+  <link rel="stylesheet" href="fixture.css" />
   <style>
     /* ---------- Fixture design system (kept in sync with index.html) ---------- */
     :root {
@@ -110,19 +112,18 @@
     .back-btn:active { opacity: 0.55; }
 
     /* ---------- Level 1's answer, once it's behind you ---------- */
+    .done-list { flex: 0 0 auto; }
     .done-row {
-      flex: 0 0 auto;
-      display: none;                 /* only appears once level 1 is done */
+      display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 9px;
       background: var(--row-solved);
       border: 1.5px solid var(--gold);
       border-radius: 11px;
-      padding: 8px 12px;
-      margin-bottom: 10px;
+      padding: 7px 11px;
+      margin-bottom: 7px;
       animation: pop 0.3s ease;
     }
-    .done-row.show { display: flex; }
     /* a level you had revealed for you is cream, not gold */
     .done-row.revealed { background: rgba(242, 239, 230, 0.07); border-color: rgba(242, 239, 230, 0.4); }
     .done-num {
@@ -147,7 +148,7 @@
       text-transform: uppercase;
       color: rgba(242, 239, 230, 0.5);
     }
-    .done-name { margin-left: auto; font-size: 14px; font-weight: 700; }
+    .done-name { margin-left: auto; font-size: 13px; font-weight: 700; }
 
     /* ---------- The level label ---------- */
     .level-label {
@@ -392,79 +393,6 @@
     .key.spacebar { flex: 1.5; }
     .key.icon { display: flex; align-items: center; justify-content: center; }
 
-    /* ---------- Finish pop-up (modal) ---------- */
-    .overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      background: rgba(7, 42, 32, 0.78);
-      backdrop-filter: blur(3px);
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .overlay.show { display: flex; }
-
-    .modal {
-      background: var(--cream);
-      color: var(--text-dark);
-      width: 100%;
-      max-width: 380px;
-      border-radius: 18px;
-      padding: 26px 22px;
-      text-align: center;
-      animation: pop 0.35s ease;
-    }
-    .modal h2 {
-      margin: 0 0 14px;
-      font-size: 32px;
-      font-family: var(--display);
-      font-weight: 400;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-    /* the two answers, listed back on the result card */
-    .answers { list-style: none; margin: 0 0 18px; padding: 0; text-align: left; }
-    .answers li {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 11px;
-      margin-bottom: 7px;
-      background: rgba(11, 61, 46, 0.06);
-      font-size: 14px;
-    }
-    .answers li:last-child { margin-bottom: 0; }
-    .ans-clue { color: rgba(11, 61, 46, 0.6); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }
-    .ans-name { margin-left: auto; font-weight: 800; }
-
-    .stats { display: flex; gap: 12px; }
-    .stat {
-      flex: 1;
-      background: rgba(11, 61, 46, 0.06);
-      border-radius: 14px;
-      padding: 14px 8px;
-    }
-    .stat-num {
-      display: block;
-      font-family: var(--display);
-      font-weight: 400;
-      font-size: 34px;
-      line-height: 1;
-      color: var(--gold);
-      font-variant-numeric: tabular-nums;
-    }
-    .stat-label {
-      display: block;
-      margin-top: 5px;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 1.4px;
-      text-transform: uppercase;
-      color: rgba(11, 61, 46, 0.5);
-    }
   </style>
 </head>
 <body>
@@ -477,12 +405,8 @@
       <span class="timer" id="timer">0:00</span>
     </div>
 
-    <!-- Level 1's answer, shown once you've moved on to level 2 -->
-    <div class="done-row" id="doneRow">
-      <span class="done-num">1</span>
-      <span class="done-clue" id="doneClue"></span>
-      <span class="done-name" id="doneName"></span>
-    </div>
+    <!-- Levels you've already cracked stack up here -->
+    <div class="done-list" id="doneList"></div>
 
     <div class="level-label" id="levelLabel">Level 1 of 2</div>
 
@@ -525,18 +449,7 @@
     <div class="keyboard" id="keyboard"></div>
   </main>
 
-  <!-- The finish pop-up, hidden until both levels are done -->
-  <div class="overlay" id="overlay">
-    <div class="modal">
-      <h2>Crossover!</h2>
-      <ul class="answers" id="answerList"></ul>
-      <div class="stats">
-        <div class="stat"><span class="stat-num" id="statSolved">0/2</span><span class="stat-label">Solved</span></div>
-        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time</span></div>
-      </div>
-    </div>
-  </div>
-
+  <script src="fixture.js"></script>
   <script>
     // =========================================================
     //  THE PUZZLES
@@ -545,52 +458,57 @@
     //    Level 2 — two clubs: name a player who turned out for both
     //  "answers" lists every player that counts. Anything else is wrong.
     // =========================================================
-    const PUZZLES = [
-      {
-        one: { labelA: "Club", valueA: "Chelsea", labelB: "Nation", valueB: "Serbia",
-               answers: ["Nemanja Matić", "Branislav Ivanović"] },
-        two: { labelA: "Club", valueA: "Real Madrid", labelB: "Club", valueB: "Manchester United",
-               answers: ["David Beckham", "Cristiano Ronaldo", "Casemiro", "Raphaël Varane",
-                         "Michael Owen", "Ángel Di María"] },
-      },
-      {
-        one: { labelA: "Club", valueA: "Manchester United", labelB: "Nation", valueB: "Netherlands",
-               answers: ["Robin van Persie", "Ruud van Nistelrooy", "Edwin van der Sar",
-                         "Memphis Depay", "Daley Blind", "Donny van de Beek"] },
-        two: { labelA: "Club", valueA: "Barcelona", labelB: "Club", valueB: "Liverpool",
-               answers: ["Luis Suárez", "Philippe Coutinho", "Javier Mascherano",
-                         "Pepe Reina", "Luis García"] },
-      },
-      {
-        one: { labelA: "Club", valueA: "Arsenal", labelB: "Nation", valueB: "Germany",
-               answers: ["Mesut Özil", "Per Mertesacker", "Lukas Podolski",
-                         "Serge Gnabry", "Shkodran Mustafi"] },
-        two: { labelA: "Club", valueA: "AC Milan", labelB: "Club", valueB: "Chelsea",
-               answers: ["Fernando Torres", "Marcel Desailly", "Olivier Giroud",
-                         "Fikayo Tomori", "Andriy Shevchenko", "Thiago Silva"] },
-      },
-      {
-        one: { labelA: "Club", valueA: "Liverpool", labelB: "Nation", valueB: "Spain",
-               answers: ["Fernando Torres", "Xabi Alonso", "Pepe Reina",
-                         "Luis García", "Thiago Alcântara"] },
-        two: { labelA: "Club", valueA: "Juventus", labelB: "Club", valueB: "Manchester United",
-               answers: ["Cristiano Ronaldo", "Paul Pogba", "Patrice Evra", "Ángel Di María"] },
-      },
-      {
-        one: { labelA: "Club", valueA: "Inter Milan", labelB: "Nation", valueB: "Argentina",
-               answers: ["Javier Zanetti", "Diego Milito", "Esteban Cambiasso",
-                         "Mauro Icardi", "Lautaro Martínez"] },
-        two: { labelA: "Club", valueA: "Arsenal", labelB: "Club", valueB: "Barcelona",
-               answers: ["Thierry Henry", "Cesc Fàbregas", "Marc Overmars",
-                         "Alexander Hleb", "Emmanuel Petit", "Alex Song"] },
-      },
-      {
-        one: { labelA: "Club", valueA: "Real Madrid", labelB: "Nation", valueB: "England",
-               answers: ["David Beckham", "Jude Bellingham", "Michael Owen",
-                         "Steve McManaman", "Jonathan Woodgate"] },
-        two: { labelA: "Club", valueA: "Bayern Munich", labelB: "Club", valueB: "Chelsea",
-               answers: ["Arjen Robben", "Michael Ballack", "Claudio Pizarro"] },
-      },
+    // ---- Level type A: a club and a nation ----
+    const NATION_LEVELS = [
+      { labelA: "Club", valueA: "Chelsea", labelB: "Nation", valueB: "Serbia",
+        answers: ["Nemanja Matić", "Branislav Ivanović"] },
+      { labelA: "Club", valueA: "Manchester United", labelB: "Nation", valueB: "Netherlands",
+        answers: ["Robin van Persie", "Ruud van Nistelrooy", "Edwin van der Sar",
+                  "Memphis Depay", "Daley Blind", "Donny van de Beek"] },
+      { labelA: "Club", valueA: "Arsenal", labelB: "Nation", valueB: "Germany",
+        answers: ["Mesut Özil", "Per Mertesacker", "Lukas Podolski",
+                  "Serge Gnabry", "Shkodran Mustafi"] },
+      { labelA: "Club", valueA: "Liverpool", labelB: "Nation", valueB: "Spain",
+        answers: ["Fernando Torres", "Xabi Alonso", "Pepe Reina",
+                  "Luis García", "Thiago Alcântara"] },
+      { labelA: "Club", valueA: "Inter Milan", labelB: "Nation", valueB: "Argentina",
+        answers: ["Javier Zanetti", "Diego Milito", "Esteban Cambiasso",
+                  "Mauro Icardi", "Lautaro Martínez"] },
+      { labelA: "Club", valueA: "Real Madrid", labelB: "Nation", valueB: "England",
+        answers: ["David Beckham", "Jude Bellingham", "Michael Owen",
+                  "Steve McManaman", "Jonathan Woodgate"] },
+      { labelA: "Club", valueA: "Bayern Munich", labelB: "Nation", valueB: "France",
+        answers: ["Franck Ribéry", "Bixente Lizarazu", "Willy Sagnol",
+                  "Kingsley Coman", "Corentin Tolisso", "Lucas Hernández"] },
+      { labelA: "Club", valueA: "Juventus", labelB: "Nation", valueB: "Italy",
+        answers: ["Alessandro Del Piero", "Gianluigi Buffon", "Giorgio Chiellini",
+                  "Leonardo Bonucci", "Andrea Pirlo", "Federico Chiesa"] },
+    ];
+
+    // ---- Level type B: two clubs ----
+    const CLUB_LEVELS = [
+      { labelA: "Club", valueA: "Real Madrid", labelB: "Club", valueB: "Manchester United",
+        answers: ["David Beckham", "Cristiano Ronaldo", "Casemiro", "Raphaël Varane",
+                  "Michael Owen", "Ángel Di María"] },
+      { labelA: "Club", valueA: "Barcelona", labelB: "Club", valueB: "Liverpool",
+        answers: ["Luis Suárez", "Philippe Coutinho", "Javier Mascherano",
+                  "Pepe Reina", "Luis García"] },
+      { labelA: "Club", valueA: "AC Milan", labelB: "Club", valueB: "Chelsea",
+        answers: ["Fernando Torres", "Marcel Desailly", "Olivier Giroud",
+                  "Fikayo Tomori", "Andriy Shevchenko", "Thiago Silva"] },
+      { labelA: "Club", valueA: "Juventus", labelB: "Club", valueB: "Manchester United",
+        answers: ["Cristiano Ronaldo", "Paul Pogba", "Patrice Evra", "Ángel Di María"] },
+      { labelA: "Club", valueA: "Arsenal", labelB: "Club", valueB: "Barcelona",
+        answers: ["Thierry Henry", "Cesc Fàbregas", "Marc Overmars",
+                  "Alexander Hleb", "Emmanuel Petit", "Alex Song"] },
+      { labelA: "Club", valueA: "Bayern Munich", labelB: "Club", valueB: "Chelsea",
+        answers: ["Arjen Robben", "Michael Ballack", "Claudio Pizarro"] },
+      { labelA: "Club", valueA: "Real Madrid", labelB: "Club", valueB: "Chelsea",
+        answers: ["Eden Hazard", "Claude Makélélé", "Thibaut Courtois",
+                  "Arjen Robben", "Álvaro Morata", "Nicolas Anelka"] },
+      { labelA: "Club", valueA: "Inter Milan", labelB: "Club", valueB: "Barcelona",
+        answers: ["Ronaldo Nazário", "Zlatan Ibrahimović", "Samuel Eto'o",
+                  "Philippe Coutinho", "Arturo Vidal"] },
     ];
 
     // Famous names that are never the answer — they pad out the search list.
@@ -614,19 +532,27 @@
       const epoch = Date.UTC(2026, 0, 1);          // counting starts 1 Jan 2026
       return Math.floor((today - epoch) / 86400000);
     }
-    const PUZZLE = PUZZLES[((dayNumber() % PUZZLES.length) + PUZZLES.length) % PUZZLES.length];
-    const LEVELS = [PUZZLE.one, PUZZLE.two];
+    // Four levels a day: two club-and-nation, then two club-and-club.
+    const DAY = ((dayNumber() % NATION_LEVELS.length) + NATION_LEVELS.length) % NATION_LEVELS.length;
+    const LEVELS = [
+      NATION_LEVELS[DAY],
+      NATION_LEVELS[(DAY + 3) % NATION_LEVELS.length],
+      CLUB_LEVELS[DAY % CLUB_LEVELS.length],
+      CLUB_LEVELS[(DAY + 5) % CLUB_LEVELS.length],
+    ];
 
-    // The searchable list: every answer from every puzzle, plus the decoys, A–Z.
+    // The searchable list: every answer from every level, plus the decoys, A-Z.
     const DATABASE = (function () {
       const names = new Set();
-      PUZZLES.forEach((p) => {
-        p.one.answers.forEach((n) => names.add(n));
-        p.two.answers.forEach((n) => names.add(n));
+      NATION_LEVELS.concat(CLUB_LEVELS).forEach(function (lv) {
+        lv.answers.forEach(function (n) { names.add(n); });
       });
-      DECOYS.forEach((n) => names.add(n));
+      DECOYS.forEach(function (n) { names.add(n); });
       return [...names].sort((a, b) => a.localeCompare(b));
     })();
+
+    const GAME_ID = "crossover";   // how this game is known to fixture.js
+    let usedHelp = false;          // true once a Hint or Reveal has been used
 
     // How long Hint and Reveal take to charge up. There is no time penalty
     // for using them — the wait IS the cost, because your time is your score.
@@ -645,7 +571,6 @@
     const qtextEl     = document.getElementById("qtext");
     const keyboardEl  = document.getElementById("keyboard");
     const dropdownEl  = document.getElementById("dropdown");
-    const overlayEl   = document.getElementById("overlay");
 
     let query = "";
     let level;         // 0 = level one, 1 = level two
@@ -695,7 +620,7 @@
     // ---- Put the current level on screen ----
     function renderLevel() {
       const lv = LEVELS[level];
-      levelLabel.textContent = "Level " + (level + 1) + " of 2";
+      levelLabel.textContent = "Level " + (level + 1) + " of " + LEVELS.length;
       document.getElementById("labelA").textContent = lv.labelA;
       document.getElementById("valueA").textContent = lv.valueA;
       document.getElementById("labelB").textContent = lv.labelB;
@@ -800,15 +725,17 @@
     function solveLevel(name, how) {
       results[level] = { name: name, how: how };
 
-      if (level === 0) {
-        // park level one at the top and move on to level two
-        const row = document.getElementById("doneRow");
-        row.classList.add("show");
-        if (how === "revealed") row.classList.add("revealed");
-        document.getElementById("doneClue").textContent = clueText(LEVELS[0]);
-        document.getElementById("doneName").textContent = name;
+      // park the level you've just cracked at the top of the screen
+      const row = document.createElement("div");
+      row.className = "done-row" + (how === "revealed" ? " revealed" : "");
+      row.innerHTML =
+        '<span class="done-num">' + (level + 1) + '</span>' +
+        '<span class="done-clue">' + clueText(LEVELS[level]) + '</span>' +
+        '<span class="done-name">' + name + '</span>';
+      document.getElementById("doneList").appendChild(row);
 
-        level = 1;
+      if (level < LEVELS.length - 1) {
+        level++;
         used = 0;
         guessed = new Set();
         renderLevel();
@@ -893,30 +820,27 @@
       qtextEl.textContent = "";
       dropdownEl.classList.remove("show");
 
-      const listEl = document.getElementById("answerList");
-      listEl.innerHTML = "";
-      LEVELS.forEach((lv, i) => {
-        const li = document.createElement("li");
-        li.innerHTML =
-          '<span class="ans-clue">' + clueText(lv) + '</span>' +
-          '<span class="ans-name">' + results[i].name + '</span>';
-        listEl.appendChild(li);
-      });
-
-      // only levels you cracked yourself count
-      const solved = results.filter((r) => r.how === "found").length;
-      document.getElementById("statSolved").textContent = solved + "/2";
-      document.getElementById("statTime").textContent = format(seconds);
-
-      setTimeout(() => overlayEl.classList.add("show"), 1000);
+      Fixture.saveResult(GAME_ID, seconds, !usedHelp);
+      setTimeout(() => Fixture.showEndcard({
+        gameId: GAME_ID, seconds: seconds, title: "Crossover!",
+      }), 1000);
     }
 
     // ---- Set up the game (runs once when the page loads) ----
+    // One go per day: if today's already done, show the end card instead.
+    const alreadyPlayed = Fixture.getResult(GAME_ID);
+    if (alreadyPlayed) {
+      Fixture.showEndcard({
+        gameId: GAME_ID, seconds: alreadyPlayed.seconds,
+        title: "Crossover!", locked: true,
+      });
+    }
+
     level = 0;
     used = 0;
     guessed = new Set();
     results = [];
-    finished = false;
+    finished = !!alreadyPlayed;      // a finished game ignores every tap
 
     renderLevel();
 
@@ -933,10 +857,11 @@
 
     hintBtn.addEventListener("click", () => {
       if (finished || !hint.ready) return;
-      if (doHint()) hint.readyAt = performance.now() + HINT_UNLOCK;
+      if (doHint()) { usedHelp = true; hint.readyAt = performance.now() + HINT_UNLOCK; }
     });
     revealBtn.addEventListener("click", () => {
       if (finished || !reveal.ready) return;
+      usedHelp = true;
       doReveal();
     });
   </script>
