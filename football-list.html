@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover lets the game fill the whole screen, under the notch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Fixture — Football List</title>
+
+  <!-- Make it launch fullscreen like an app when added to the home screen -->
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fixture" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
+  <link rel="stylesheet" href="fonts.css" />
+  <style>
+    /* ---------- Fixture design system (kept in sync with index.html) ---------- */
+    :root {
+      --pitch: #0b3d2e;             /* base */
+      --pitch-dark: #072a20;        /* deeper end of the background gradient */
+      --cream: #f2efe6;             /* all text */
+      --gold: #c68a2e;              /* the single accent */
+      --text-dark: #0b3d2e;         /* text sitting on top of gold or cream */
+
+      --row-empty: rgba(255, 255, 255, 0.05);
+      --row-solved: rgba(198, 138, 46, 0.14);
+      --row-border: rgba(242, 239, 230, 0.16);
+
+      --display: 'Bebas Neue', 'Arial Narrow', sans-serif;
+      --body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    /* Lock the page to the screen: no scrolling, no rubber-band bounce. */
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--pitch-dark);   /* paints the safe-area regions green, not white */
+    }
+    body {
+      margin: 0;
+      position: fixed;
+      inset: 0;
+      font-family: var(--body);
+      background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
+      color: var(--cream);
+      display: flex;
+      justify-content: center;
+      padding: max(10px, env(safe-area-inset-top)) 14px max(8px, calc(env(safe-area-inset-bottom) - 20px));
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;   /* no double-tap zoom */
+    }
+
+    .game {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    header { margin-bottom: 0; flex: 0 0 auto; }
+
+    .badge {
+      background: var(--gold);
+      color: var(--text-dark);
+      font-family: var(--body);
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: var(--display);
+      font-size: 25px;
+      font-weight: 400;          /* Bebas has one weight — never fake-bold it */
+      letter-spacing: 0.5px;
+      line-height: 1.1;
+      margin: 10px 0 12px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    /* ---------- Countdown timer (right end of the top bar) ---------- */
+    .timer {
+      margin-left: auto;
+      font-family: var(--display);
+      font-variant-numeric: tabular-nums;
+      font-size: 27px;
+      line-height: 1;
+      color: var(--gold);
+      letter-spacing: 1px;
+      transition: color 0.2s ease;
+    }
+    /* the last ten seconds go red and pulse */
+    .timer.urgent { color: #e5484d; animation: tick 1s steps(2) infinite; }
+    @keyframes tick { 50% { opacity: 0.45; } }
+
+    /* ---------- Score line above the grid ---------- */
+    .col-head {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 4px 5px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      opacity: 0.55;
+      flex: 0 0 auto;
+    }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 2px 2px;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--cream);
+      cursor: pointer;
+      padding: 4px 2px;
+      display: flex;
+      align-items: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .back-btn:active { opacity: 0.55; }
+
+    /* ---------- The answer grid: two columns of slots ---------- */
+    .list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      grid-auto-rows: 46px;   /* slots stay a fixed, readable height... */
+      align-content: center;  /* ...and the block centres in the space it has */
+      margin-bottom: 8px;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      background: var(--row-empty);
+      border: 1.5px solid var(--row-border);
+      border-radius: 11px;
+      padding: 3px 10px;
+      overflow: hidden;
+      transition: background 0.25s ease, border-color 0.25s ease;
+    }
+    /* found it yourself */
+    .item.found {
+      background: var(--row-solved);
+      border-color: var(--gold);
+      animation: pop 0.3s ease;
+    }
+    /* revealed at the end because you ran out of time */
+    .item.missed { border-color: rgba(229, 72, 77, 0.5); }
+    @keyframes pop {
+      0% { transform: scale(0.9); }
+      60% { transform: scale(1.03); }
+      100% { transform: scale(1.0); }
+    }
+
+    .item-num {
+      flex: 0 0 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(242, 239, 230, 0.12);
+      color: var(--cream);
+      font-family: var(--display);
+      font-size: 13px;
+      line-height: 1;
+      padding-top: 2px;      /* Bebas sits high in its box */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.25s ease, color 0.25s ease;
+    }
+    .item.found .item-num { background: var(--gold); color: var(--text-dark); }
+    .item.missed .item-num { background: rgba(229, 72, 77, 0.5); color: var(--cream); }
+
+    /* long club names (e.g. "Nottingham Forest") wrap onto a second line
+       rather than being cut off with an ellipsis */
+    .item-name {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.15;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .item.missed .item-name { color: rgba(242, 239, 230, 0.6); }
+
+    /* ---------- Search box (no dropdown — it matches as you type) ---------- */
+    .search-wrap { position: relative; flex: 0 0 auto; }
+
+    .query {
+      width: 100%;
+      min-height: 46px;
+      padding: 11px 14px;
+      background: var(--cream);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      color: var(--text-dark);
+      font-size: 17px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .qtext { white-space: nowrap; overflow: hidden; text-transform: uppercase; }
+    .qtext:empty::before { content: "Type an answer — it locks in itself"; color: #8b9490; font-weight: 500; text-transform: none; }
+    .caret {
+      width: 2px; height: 20px;
+      background: var(--pitch);
+      margin-left: 2px;
+      animation: blink 1s steps(1) infinite;
+    }
+    .qtext:empty + .caret { display: none; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* a correct answer flashes the box gold for a moment */
+    .query.hit { animation: hitflash 0.5s ease; }
+    @keyframes hitflash {
+      0%, 60% { box-shadow: 0 0 0 3px var(--gold); }
+      100% { box-shadow: 0 0 0 3px rgba(198, 138, 46, 0); }
+    }
+
+    /* ---------- Built-in on-screen keyboard ---------- */
+    .keyboard {
+      flex: 0 0 auto;
+      margin-top: 10px;
+      padding: 0 3px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      user-select: none;
+    }
+    .kb-row { display: flex; gap: 6px; justify-content: center; }
+    .kb-row.indent { padding: 0 5%; }
+    .key {
+      flex: 1;
+      text-align: center;
+      background: var(--cream);
+      color: var(--text-dark);
+      border-radius: 9px;
+      padding: 16px 0;
+      font-size: 18px;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 1.5px 0 rgba(0, 0, 0, 0.3);
+      transition: background 0.08s ease, transform 0.08s ease;
+    }
+    .key:active { background: var(--gold); transform: scale(0.92); }
+    .key.special { font-size: 12px; display: flex; align-items: center; justify-content: center; }
+    .key.special:active { background: var(--gold); transform: scale(0.95); }
+    .key.wide { flex: 1.5; }
+    .key.spacebar { flex: 1.5; }
+    .key.icon { display: flex; align-items: center; justify-content: center; }
+
+    /* ---------- Finish pop-up (modal) ---------- */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(7, 42, 32, 0.78);
+      backdrop-filter: blur(3px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+
+    .modal {
+      background: var(--cream);
+      color: var(--text-dark);
+      width: 100%;
+      max-width: 380px;
+      border-radius: 18px;
+      padding: 26px 22px;
+      text-align: center;
+      animation: pop 0.35s ease;
+    }
+    .modal h2 {
+      margin: 0 0 16px;
+      font-size: 32px;
+      font-family: var(--display);
+      font-weight: 400;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .stats { display: flex; gap: 12px; }
+    .stat {
+      flex: 1;
+      background: rgba(11, 61, 46, 0.06);
+      border-radius: 14px;
+      padding: 14px 8px;
+    }
+    .stat-num {
+      display: block;
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 34px;
+      line-height: 1;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label {
+      display: block;
+      margin-top: 5px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: rgba(11, 61, 46, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <div class="topbar">
+      <a class="back-btn" id="backBtn" href="index.html" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </a>
+      <span class="badge">Football List</span>
+      <span class="timer" id="timer">1:00</span>
+    </div>
+
+    <header>
+      <h1 id="title">Loading…</h1>
+    </header>
+
+    <div class="col-head">
+      <span id="foundLabel">0 found</span>
+      <span id="totalLabel">of 0</span>
+    </div>
+
+    <!-- The answer slots get built by the script below -->
+    <div class="list" id="list"></div>
+
+    <div class="search-wrap">
+      <div class="query" id="query"><span class="qtext" id="qtext"></span><span class="caret"></span></div>
+    </div>
+
+    <!-- Built-in keyboard — keys are built by the script below -->
+    <div class="keyboard" id="keyboard"></div>
+  </main>
+
+  <!-- The finish pop-up, hidden until the round ends -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h2 id="resultTitle">Time!</h2>
+      <div class="stats">
+        <div class="stat"><span class="stat-num" id="statScore">0/0</span><span class="stat-label">Named</span></div>
+        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time used</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================
+    //  THE LISTS
+    //  "answers" are what's shown in the grid. "alt" holds the other
+    //  spellings a player might type (e.g. "man utd") so short forms count.
+    // =========================================================
+    const LISTS = [
+      {
+        title: "Countries that have won the World Cup",
+        answers: [
+          { name: "Brazil",    alt: [] },
+          { name: "Germany",   alt: ["west germany"] },
+          { name: "Italy",     alt: [] },
+          { name: "Argentina", alt: [] },
+          { name: "France",    alt: [] },
+          { name: "Uruguay",   alt: [] },
+          { name: "England",   alt: [] },
+          { name: "Spain",     alt: [] },
+        ],
+      },
+      {
+        title: "Clubs that have won the Premier League",
+        answers: [
+          { name: "Manchester United", alt: ["man utd", "man united", "manchester utd", "united"] },
+          { name: "Manchester City",   alt: ["man city", "city"] },
+          { name: "Arsenal",           alt: [] },
+          { name: "Chelsea",           alt: [] },
+          { name: "Blackburn Rovers",  alt: ["blackburn"] },
+          { name: "Leicester City",    alt: ["leicester"] },
+          { name: "Liverpool",         alt: [] },
+        ],
+      },
+      {
+        title: "English clubs to win the European Cup",
+        answers: [
+          { name: "Liverpool",         alt: [] },
+          { name: "Manchester United", alt: ["man utd", "man united", "manchester utd", "united"] },
+          { name: "Nottingham Forest", alt: ["forest", "notts forest"] },
+          { name: "Chelsea",           alt: [] },
+          { name: "Aston Villa",       alt: ["villa"] },
+          { name: "Manchester City",   alt: ["man city", "city"] },
+        ],
+      },
+      {
+        title: "Players with three or more Ballon d'Ors",
+        answers: [
+          { name: "Lionel Messi",     alt: ["messi"] },
+          { name: "Cristiano Ronaldo", alt: ["ronaldo", "cristiano"] },
+          { name: "Michel Platini",   alt: ["platini"] },
+          { name: "Johan Cruyff",     alt: ["cruyff", "cruijff"] },
+          { name: "Marco van Basten", alt: ["van basten", "basten"] },
+        ],
+      },
+      {
+        title: "Clubs Cristiano Ronaldo has played for",
+        answers: [
+          { name: "Sporting CP",       alt: ["sporting", "sporting lisbon"] },
+          { name: "Manchester United", alt: ["man utd", "man united", "manchester utd", "united"] },
+          { name: "Real Madrid",       alt: ["madrid"] },
+          { name: "Juventus",          alt: ["juve"] },
+          { name: "Al-Nassr",          alt: ["al nassr", "alnassr", "nassr"] },
+        ],
+      },
+      {
+        title: "Clubs with five or more European Cups",
+        answers: [
+          { name: "Real Madrid",   alt: ["madrid"] },
+          { name: "AC Milan",      alt: ["milan"] },
+          { name: "Liverpool",     alt: [] },
+          { name: "Bayern Munich", alt: ["bayern"] },
+          { name: "Barcelona",     alt: ["barca"] },
+        ],
+      },
+    ];
+
+    // ---- Pick TODAY's list (same one all day, a new one tomorrow) ----
+    function dayNumber() {
+      const now = new Date();
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      const epoch = Date.UTC(2026, 0, 1);          // counting starts 1 Jan 2026
+      return Math.floor((today - epoch) / 86400000);
+    }
+    const LIST = LISTS[((dayNumber() % LISTS.length) + LISTS.length) % LISTS.length];
+
+    const ROUND_SECONDS = 60;
+
+    // ---- Grab the parts of the page we'll update ----
+    const listEl      = document.getElementById("list");
+    const timerEl     = document.getElementById("timer");
+    const queryEl     = document.getElementById("query");
+    const qtextEl     = document.getElementById("qtext");
+    const keyboardEl  = document.getElementById("keyboard");
+    const overlayEl   = document.getElementById("overlay");
+    const foundLabel  = document.getElementById("foundLabel");
+    const totalLabel  = document.getElementById("totalLabel");
+
+    let query = "";    // what the player has typed on the built-in keyboard
+    let found;         // a Set of answer indexes already named
+    let startTime;     // when the clock started
+    let tickHandle;    // the repeating game loop
+    let finished;      // true once time is up or the list is complete
+
+    // Turn "Al-Nassr" or "  BARÇA " into "al nassr" / "barca" so that
+    // punctuation, accents and stray spaces never cost the player a point.
+    function normalise(text) {
+      return text
+        .toLowerCase()
+        .normalize("NFD")                 // splits accented letters apart
+        .replace(/[̀-ͯ]/g, "") // removes the accent marks
+        .replace(/[^a-z0-9]+/g, " ")      // hyphens, apostrophes, dots -> space
+        .trim();
+    }
+
+    // Every spelling that counts for a given answer.
+    function spellingsFor(answer) {
+      return [answer.name, ...answer.alt].map(normalise);
+    }
+
+    // Show m:ss for a number of seconds (e.g. 0:23, 1:00).
+    function format(totalSeconds) {
+      const s = Math.max(0, Math.ceil(totalSeconds));
+      return Math.floor(s / 60) + ":" + (s % 60).toString().padStart(2, "0");
+    }
+
+    // Build the answer grid — blank slots until they're named.
+    function buildList() {
+      listEl.innerHTML = "";
+      LIST.answers.forEach((answer, i) => {
+        const item = document.createElement("div");
+        item.className = "item";
+        item.id = "item-" + i;
+        item.innerHTML =
+          '<div class="item-num">' + (i + 1) + '</div>' +
+          '<div class="item-name"></div>';
+        listEl.appendChild(item);
+      });
+      totalLabel.textContent = "of " + LIST.answers.length;
+      renderScore();
+    }
+
+    function renderScore() {
+      foundLabel.textContent = found.size + " found";
+    }
+
+    // Fill in one answer.
+    function fillItem(i) {
+      found.add(i);
+      const item = document.getElementById("item-" + i);
+      item.classList.add("found");
+      item.querySelector(".item-name").textContent = LIST.answers[i].name;
+      renderScore();
+    }
+
+    // A correct answer: flash the search box gold.
+    let hitTimer;
+    function flashHit() {
+      clearTimeout(hitTimer);
+      queryEl.classList.remove("hit");
+      void queryEl.offsetWidth;      // restart the animation if it's mid-flash
+      queryEl.classList.add("hit");
+      hitTimer = setTimeout(() => queryEl.classList.remove("hit"), 500);
+    }
+
+    // After every keypress: does what's typed match an answer we don't have yet?
+    function checkQuery() {
+      const typed = normalise(query);
+      if (!typed) return;
+
+      for (let i = 0; i < LIST.answers.length; i++) {
+        if (found.has(i)) continue;
+        if (spellingsFor(LIST.answers[i]).includes(typed)) {
+          fillItem(i);
+          flashHit();
+          query = "";
+          renderQuery();
+          if (found.size === LIST.answers.length) finish(true);
+          return;
+        }
+      }
+    }
+
+    function renderQuery() {
+      qtextEl.textContent = query;
+    }
+
+    // ---- Build the on-screen keyboard ----
+    const KEY_ROWS = [
+      ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+      ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+      ["space", "z", "x", "c", "v", "b", "n", "m", "del"],
+    ];
+    function buildKeyboard() {
+      keyboardEl.innerHTML = "";
+      KEY_ROWS.forEach((row, i) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "kb-row";
+        if (i === 1) rowEl.classList.add("indent");
+        row.forEach((k) => {
+          const key = document.createElement("div");
+          key.className = "key";
+          if (k === "del") {
+            key.classList.add("special", "wide", "icon");
+            key.setAttribute("aria-label", "Delete");
+            key.innerHTML = '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6H10L4 12l6 6h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/><line x1="14" y1="10" x2="18" y2="14"/><line x1="18" y1="10" x2="14" y2="14"/></svg>';
+          }
+          else if (k === "space") { key.classList.add("special", "spacebar"); key.textContent = "space"; }
+          else { key.textContent = k; }
+          key.addEventListener("pointerdown", (e) => { e.preventDefault(); pressKey(k); });
+          rowEl.appendChild(key);
+        });
+        keyboardEl.appendChild(rowEl);
+      });
+    }
+    function pressKey(k) {
+      if (finished) return;
+      if (k === "del") query = query.slice(0, -1);
+      else if (k === "space") { if (query && !query.endsWith(" ")) query += " "; }
+      else if (query.length < 24) query += k;
+      renderQuery();
+      checkQuery();          // answers lock in the moment they're spelled out
+    }
+
+    // ---- The game loop: count down, and stop at zero ----
+    function loop() {
+      const left = ROUND_SECONDS - (performance.now() - startTime) / 1000;
+      timerEl.textContent = format(left);
+      timerEl.classList.toggle("urgent", left <= 10);
+      if (left <= 0) finish(false);
+    }
+
+    // Called when time runs out or the list is complete.
+    function finish(completed) {
+      if (finished) return;
+      finished = true;
+      clearInterval(tickHandle);
+
+      const used = Math.min(ROUND_SECONDS, (performance.now() - startTime) / 1000);
+      timerEl.textContent = format(completed ? ROUND_SECONDS - used : 0);
+      timerEl.classList.remove("urgent");
+
+      // Show whatever was missed, outlined in red.
+      LIST.answers.forEach((answer, i) => {
+        if (found.has(i)) return;
+        const item = document.getElementById("item-" + i);
+        item.classList.add("missed");
+        item.querySelector(".item-name").textContent = answer.name;
+      });
+
+      query = "";
+      renderQuery();
+
+      document.getElementById("resultTitle").textContent = completed ? "All named!" : "Time!";
+      document.getElementById("statScore").textContent = found.size + "/" + LIST.answers.length;
+      document.getElementById("statTime").textContent = format(used);
+
+      // small pause so the player sees the misses appear before the pop-up
+      setTimeout(() => overlayEl.classList.add("show"), 1200);
+    }
+
+    // ---- Set up the game (runs once when the page loads) ----
+    found = new Set();
+    finished = false;
+    document.getElementById("title").textContent = LIST.title;
+    buildList();
+
+    startTime = performance.now();
+    timerEl.textContent = format(ROUND_SECONDS);
+    tickHandle = setInterval(loop, 100);
+
+    // Shrink the title font until it fits on a single line at any phone width.
+    function fitTitle() {
+      const el = document.getElementById("title");
+      let size = 25;
+      el.style.fontSize = size + "px";
+      while (el.scrollWidth > el.clientWidth && size > 9) {
+        size -= 0.5;
+        el.style.fontSize = size + "px";
+      }
+    }
+
+    buildKeyboard();
+    renderQuery();
+    fitTitle();
+    window.addEventListener("resize", fitTitle);
+    // re-fit once Bebas Neue has actually loaded (its metrics differ from the fallback)
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+  </script>
+</body>
+</html>

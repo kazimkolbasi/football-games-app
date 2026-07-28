@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover lets the game fill the whole screen, under the notch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Fixture — Missing XI</title>
+
+  <!-- Make it launch fullscreen like an app when added to the home screen -->
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fixture" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
+  <link rel="stylesheet" href="fonts.css" />
+  <style>
+    /* ---------- Fixture design system (kept in sync with index.html) ---------- */
+    :root {
+      --pitch: #0b3d2e;             /* base */
+      --pitch-dark: #072a20;        /* deeper end of the background gradient */
+      --cream: #f2efe6;             /* all text */
+      --gold: #c68a2e;              /* the single accent */
+      --text-dark: #0b3d2e;         /* text sitting on top of gold or cream */
+
+      --row-border: rgba(242, 239, 230, 0.16);
+
+      --display: 'Bebas Neue', 'Arial Narrow', sans-serif;
+      --body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    /* Lock the page to the screen: no scrolling, no rubber-band bounce. */
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--pitch-dark);   /* paints the safe-area regions green, not white */
+    }
+    body {
+      margin: 0;
+      position: fixed;
+      inset: 0;
+      font-family: var(--body);
+      background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
+      color: var(--cream);
+      display: flex;
+      justify-content: center;
+      padding: max(10px, env(safe-area-inset-top)) 14px max(8px, calc(env(safe-area-inset-bottom) - 20px));
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;   /* no double-tap zoom */
+    }
+
+    .game {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    header { margin-bottom: 0; flex: 0 0 auto; }
+
+    .badge {
+      background: var(--gold);
+      color: var(--text-dark);
+      font-family: var(--body);
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: var(--display);
+      font-size: 25px;
+      font-weight: 400;          /* Bebas has one weight — never fake-bold it */
+      letter-spacing: 0.5px;
+      line-height: 1.1;
+      margin: 10px 0 4px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .timer {
+      margin-left: auto;
+      font-family: var(--display);
+      font-variant-numeric: tabular-nums;
+      font-size: 27px;
+      line-height: 1;
+      color: var(--gold);
+      letter-spacing: 1px;
+    }
+
+    .col-head {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 4px 6px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      opacity: 0.55;
+      flex: 0 0 auto;
+    }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 2px 2px;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--cream);
+      cursor: pointer;
+      padding: 4px 2px;
+      display: flex;
+      align-items: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .back-btn:active { opacity: 0.55; }
+
+    /* ---------- The pitch ---------- */
+    .pitch {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      margin-bottom: 8px;
+      border: 1.5px solid var(--row-border);
+      border-radius: 14px;
+      background:
+        repeating-linear-gradient(
+          to bottom,
+          rgba(255, 255, 255, 0.035) 0 8.33%,
+          rgba(255, 255, 255, 0.012) 8.33% 16.66%
+        );
+      overflow: hidden;
+    }
+    /* halfway line + centre circle + penalty box, drawn in faint cream */
+    .pitch::before {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; top: 50%;
+      border-top: 1.5px solid rgba(242, 239, 230, 0.14);
+    }
+    .pitch::after {
+      content: "";
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 84px; height: 84px;
+      margin: -42px 0 0 -42px;
+      border: 1.5px solid rgba(242, 239, 230, 0.14);
+      border-radius: 50%;
+    }
+    .box {
+      position: absolute;
+      left: 22%;
+      right: 22%;
+      bottom: 0;
+      height: 17%;
+      border: 1.5px solid rgba(242, 239, 230, 0.14);
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+    }
+
+    /* ---------- A player marker on the pitch ---------- */
+    .spot {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 62px;
+      text-align: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .shirt {
+      width: 34px;
+      height: 34px;
+      margin: 0 auto;
+      border-radius: 50%;
+      border: 1.5px solid rgba(242, 239, 230, 0.35);
+      background: rgba(7, 42, 32, 0.85);
+      color: rgba(242, 239, 230, 0.7);
+      font-family: var(--body);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+    }
+    /* names you were given for free */
+    .spot.given .shirt {
+      background: rgba(242, 239, 230, 0.14);
+      border-color: rgba(242, 239, 230, 0.5);
+      color: var(--cream);
+    }
+    /* names you worked out */
+    .spot.found .shirt {
+      background: var(--gold);
+      border-color: var(--gold);
+      color: var(--text-dark);
+      animation: pop 0.35s ease;
+    }
+    /* names revealed at the end because you gave up on time */
+    .spot.missed .shirt { border-color: rgba(229, 72, 77, 0.6); }
+
+    .spot-name {
+      margin-top: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.1;
+      color: var(--cream);
+      text-shadow: 0 1px 3px rgba(7, 42, 32, 0.9);
+    }
+    .spot.given .spot-name { color: rgba(242, 239, 230, 0.75); font-weight: 600; }
+    .spot.missed .spot-name { color: rgba(242, 239, 230, 0.55); }
+    /* a shirt nobody has named yet shows nothing underneath */
+    .spot-name:empty { display: none; }
+
+    @keyframes pop {
+      0% { transform: scale(0.9); }
+      60% { transform: scale(1.12); }
+      100% { transform: scale(1.0); }
+    }
+
+    /* ---------- Search box + dropdown ---------- */
+    .search-wrap { position: relative; flex: 0 0 auto; }
+
+    .query {
+      width: 100%;
+      min-height: 46px;
+      padding: 11px 14px;
+      background: var(--cream);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      color: var(--text-dark);
+      font-size: 17px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .qtext { white-space: nowrap; overflow: hidden; text-transform: uppercase; }
+    .qtext:empty::before { content: "Name a missing player…"; color: #8b9490; font-weight: 500; text-transform: none; }
+    .caret {
+      width: 2px; height: 20px;
+      background: var(--pitch);
+      margin-left: 2px;
+      animation: blink 1s steps(1) infinite;
+    }
+    .qtext:empty + .caret { display: none; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .query.wrong { animation: shake 0.4s ease, redfade 2.5s ease forwards; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(6px); }
+    }
+    @keyframes redfade {
+      0%, 55% { box-shadow: 0 0 0 3px #e5484d; }
+      100% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0); }
+    }
+
+    .dropdown {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      background: var(--cream);
+      border-radius: 12px;
+      overflow: hidden;
+      max-height: 260px;
+      overflow-y: auto;
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 8px);      /* sit just above the search box */
+      z-index: 50;
+      box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.28);
+    }
+    .dropdown.show { display: block; }
+    .dropdown li {
+      padding: 13px 16px;
+      color: var(--text-dark);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(11, 61, 46, 0.09);
+    }
+    .dropdown li:last-child { border-bottom: none; }
+    .dropdown li:hover, .dropdown li.active { background: rgba(198, 138, 46, 0.16); }
+    .dropdown .empty { color: #8b9490; font-weight: 500; cursor: default; }
+    .dropdown li.spent { color: #8b9490; text-decoration: line-through; }
+
+    /* ---------- Built-in on-screen keyboard ---------- */
+    .keyboard {
+      flex: 0 0 auto;
+      margin-top: 10px;
+      padding: 0 3px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      user-select: none;
+    }
+    .kb-row { display: flex; gap: 6px; justify-content: center; }
+    .kb-row.indent { padding: 0 5%; }
+    .key {
+      flex: 1;
+      text-align: center;
+      background: var(--cream);
+      color: var(--text-dark);
+      border-radius: 9px;
+      padding: 16px 0;
+      font-size: 18px;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 1.5px 0 rgba(0, 0, 0, 0.3);
+      transition: background 0.08s ease, transform 0.08s ease;
+    }
+    .key:active { background: var(--gold); transform: scale(0.92); }
+    .key.special { font-size: 12px; display: flex; align-items: center; justify-content: center; }
+    .key.special:active { background: var(--gold); transform: scale(0.95); }
+    .key.wide { flex: 1.5; }
+    .key.spacebar { flex: 1.5; }
+    .key.icon { display: flex; align-items: center; justify-content: center; }
+
+    /* ---------- Finish pop-up (modal) ---------- */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(7, 42, 32, 0.78);
+      backdrop-filter: blur(3px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+
+    .modal {
+      background: var(--cream);
+      color: var(--text-dark);
+      width: 100%;
+      max-width: 380px;
+      border-radius: 18px;
+      padding: 26px 22px;
+      text-align: center;
+      animation: pop 0.35s ease;
+    }
+    .modal h2 {
+      margin: 0 0 4px;
+      font-size: 32px;
+      font-family: var(--display);
+      font-weight: 400;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .modal .lineup-name { font-size: 14px; color: rgba(11, 61, 46, 0.7); margin: 0 0 18px; }
+    .stats { display: flex; gap: 12px; }
+    .stat {
+      flex: 1;
+      background: rgba(11, 61, 46, 0.06);
+      border-radius: 14px;
+      padding: 14px 8px;
+    }
+    .stat-num {
+      display: block;
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 34px;
+      line-height: 1;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label {
+      display: block;
+      margin-top: 5px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: rgba(11, 61, 46, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <div class="topbar">
+      <a class="back-btn" id="backBtn" href="index.html" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </a>
+      <span class="badge">Missing XI</span>
+      <span class="timer" id="timer">0:00</span>
+    </div>
+
+    <header>
+      <h1 id="title">Loading…</h1>
+    </header>
+
+    <div class="col-head">
+      <span id="subtitle"></span>
+      <span id="foundLabel">0 of 0</span>
+    </div>
+
+    <!-- The eleven shirts get positioned by the script below -->
+    <div class="pitch" id="pitch"><div class="box"></div></div>
+
+    <div class="search-wrap">
+      <ul class="dropdown" id="dropdown"></ul>
+      <div class="query" id="query"><span class="qtext" id="qtext"></span><span class="caret"></span></div>
+    </div>
+
+    <!-- Built-in keyboard — keys are built by the script below -->
+    <div class="keyboard" id="keyboard"></div>
+  </main>
+
+  <!-- The finish pop-up, hidden until the lineup is complete -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h2 id="resultTitle">Lineup complete!</h2>
+      <p class="lineup-name" id="modalLineup"></p>
+      <div class="stats">
+        <div class="stat"><span class="stat-num" id="statFound">0/0</span><span class="stat-label">Named</span></div>
+        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================
+    //  THE LINEUPS
+    //  x / y are percentages across the pitch (y: 0 = attacking end,
+    //  100 = own goal). "given" players start already filled in.
+    //  "short" is the surname shown under the shirt.
+    // =========================================================
+    const LINEUPS = [
+      {
+        title: "Barcelona 2011",
+        subtitle: "Champions League final vs Man Utd",
+        players: [
+          { name: "Víctor Valdés",     short: "Valdés",     pos: "GK", x: 50, y: 90, given: true },
+          { name: "Dani Alves",        short: "Alves",      pos: "RB", x: 84, y: 71 },
+          { name: "Gerard Piqué",      short: "Piqué",      pos: "CB", x: 62, y: 77, given: true },
+          { name: "Javier Mascherano", short: "Mascherano", pos: "CB", x: 38, y: 77 },
+          { name: "Eric Abidal",       short: "Abidal",     pos: "LB", x: 16, y: 71 },
+          { name: "Sergio Busquets",   short: "Busquets",   pos: "CM", x: 50, y: 56 },
+          { name: "Xavi Hernández",    short: "Xavi",       pos: "CM", x: 72, y: 44, given: true },
+          { name: "Andrés Iniesta",    short: "Iniesta",    pos: "CM", x: 28, y: 44 },
+          { name: "Pedro",             short: "Pedro",      pos: "RW", x: 80, y: 24 },
+          { name: "Lionel Messi",      short: "Messi",      pos: "CF", x: 50, y: 16, given: true },
+          { name: "David Villa",       short: "Villa",      pos: "LW", x: 20, y: 24 },
+        ],
+      },
+      {
+        title: "Spain 2010",
+        subtitle: "World Cup final vs Netherlands",
+        players: [
+          { name: "Iker Casillas",   short: "Casillas",  pos: "GK", x: 50, y: 90, given: true },
+          { name: "Sergio Ramos",    short: "Ramos",     pos: "RB", x: 84, y: 71 },
+          { name: "Gerard Piqué",    short: "Piqué",     pos: "CB", x: 62, y: 77 },
+          { name: "Carles Puyol",    short: "Puyol",     pos: "CB", x: 38, y: 77, given: true },
+          { name: "Joan Capdevila",  short: "Capdevila", pos: "LB", x: 16, y: 71 },
+          { name: "Sergio Busquets", short: "Busquets",  pos: "DM", x: 62, y: 58 },
+          { name: "Xabi Alonso",     short: "Alonso",    pos: "DM", x: 38, y: 58 },
+          { name: "Andrés Iniesta",  short: "Iniesta",   pos: "RM", x: 82, y: 40, given: true },
+          { name: "Xavi Hernández",  short: "Xavi",      pos: "AM", x: 50, y: 42 },
+          { name: "Pedro",           short: "Pedro",     pos: "LM", x: 18, y: 40 },
+          { name: "David Villa",     short: "Villa",     pos: "ST", x: 50, y: 18, given: true },
+        ],
+      },
+      {
+        title: "Manchester United 1999",
+        subtitle: "Champions League final vs Bayern",
+        players: [
+          { name: "Peter Schmeichel", short: "Schmeichel", pos: "GK", x: 50, y: 90, given: true },
+          { name: "Gary Neville",     short: "Neville",    pos: "RB", x: 84, y: 71 },
+          { name: "Ronny Johnsen",    short: "Johnsen",    pos: "CB", x: 62, y: 77 },
+          { name: "Jaap Stam",        short: "Stam",       pos: "CB", x: 38, y: 77, given: true },
+          { name: "Denis Irwin",      short: "Irwin",      pos: "LB", x: 16, y: 71 },
+          { name: "David Beckham",    short: "Beckham",    pos: "RM", x: 84, y: 48, given: true },
+          { name: "Nicky Butt",       short: "Butt",       pos: "CM", x: 62, y: 53 },
+          { name: "Ryan Giggs",       short: "Giggs",      pos: "CM", x: 38, y: 53 },
+          { name: "Jesper Blomqvist", short: "Blomqvist",  pos: "LM", x: 16, y: 48 },
+          { name: "Dwight Yorke",     short: "Yorke",      pos: "ST", x: 62, y: 18, given: true },
+          { name: "Andy Cole",        short: "Cole",       pos: "ST", x: 38, y: 18 },
+        ],
+      },
+      {
+        title: "France 1998",
+        subtitle: "World Cup final vs Brazil",
+        players: [
+          { name: "Fabien Barthez",       short: "Barthez",   pos: "GK", x: 50, y: 90, given: true },
+          { name: "Lilian Thuram",        short: "Thuram",    pos: "RB", x: 84, y: 71 },
+          { name: "Marcel Desailly",      short: "Desailly",  pos: "CB", x: 62, y: 77, given: true },
+          { name: "Frank Leboeuf",        short: "Leboeuf",   pos: "CB", x: 38, y: 77 },
+          { name: "Bixente Lizarazu",     short: "Lizarazu",  pos: "LB", x: 16, y: 71 },
+          { name: "Christian Karembeu",   short: "Karembeu",  pos: "RM", x: 80, y: 52 },
+          { name: "Didier Deschamps",     short: "Deschamps", pos: "CM", x: 50, y: 56, given: true },
+          { name: "Emmanuel Petit",       short: "Petit",     pos: "LM", x: 20, y: 52 },
+          { name: "Zinedine Zidane",      short: "Zidane",    pos: "AM", x: 64, y: 32, given: true },
+          { name: "Youri Djorkaeff",      short: "Djorkaeff", pos: "AM", x: 36, y: 32 },
+          { name: "Stéphane Guivarc'h",   short: "Guivarc'h", pos: "ST", x: 50, y: 15 },
+        ],
+      },
+    ];
+
+    // Famous names that are never the answer — they pad out the search list.
+    const DECOYS = [
+      "Cristiano Ronaldo", "Zlatan Ibrahimović", "Thierry Henry", "Ronaldinho", "Kaká",
+      "Roberto Carlos", "Cafu", "Robert Lewandowski", "Karim Benzema", "Raúl",
+      "Thomas Müller", "Kylian Mbappé", "Neymar", "Sergio Agüero", "Wayne Rooney",
+      "Steven Gerrard", "Frank Lampard", "Paul Scholes", "Roy Keane", "Ruud van Nistelrooy",
+      "Fernando Torres", "Luis Suárez", "Mohamed Salah", "Sadio Mané", "Erling Haaland",
+      "Harry Kane", "Antoine Griezmann", "Eden Hazard", "Kevin De Bruyne", "Toni Kroos",
+      "Luka Modrić", "Marcelo", "Dani Carvajal", "Philipp Lahm", "Bastian Schweinsteiger",
+      "Fernando Hierro", "Michel Salgado", "Claude Makélélé", "Patrick Vieira",
+      "Robert Pirès", "Marc Overmars", "Edwin van der Sar", "Rio Ferdinand", "John Terry",
+    ];
+
+    // ---- Pick TODAY's lineup (same one all day, a new one tomorrow) ----
+    function dayNumber() {
+      const now = new Date();
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      const epoch = Date.UTC(2026, 0, 1);          // counting starts 1 Jan 2026
+      return Math.floor((today - epoch) / 86400000);
+    }
+    const XI = LINEUPS[((dayNumber() % LINEUPS.length) + LINEUPS.length) % LINEUPS.length];
+
+    // The searchable list: everyone from every lineup, plus the decoys, A–Z.
+    const DATABASE = (function () {
+      const names = new Set();
+      LINEUPS.forEach((l) => l.players.forEach((p) => names.add(p.name)));
+      DECOYS.forEach((n) => names.add(n));
+      return [...names].sort((a, b) => a.localeCompare(b));
+    })();
+
+    // How many shirts the player actually has to work out.
+    const TO_FIND = XI.players.filter((p) => !p.given).length;
+
+    // ---- Grab the parts of the page we'll update ----
+    const pitchEl     = document.getElementById("pitch");
+    const timerEl     = document.getElementById("timer");
+    const queryEl     = document.getElementById("query");
+    const qtextEl     = document.getElementById("qtext");
+    const keyboardEl  = document.getElementById("keyboard");
+    const dropdownEl  = document.getElementById("dropdown");
+    const overlayEl   = document.getElementById("overlay");
+    const foundLabel  = document.getElementById("foundLabel");
+
+    let query = "";    // what the player has typed on the built-in keyboard
+    let found;         // a Set of indexes the player has named
+    let guessed;       // every name already tried, so repeats don't shake twice
+    let startTime;
+    let tickHandle;
+    let finished;
+
+    function normalise(text) {
+      return text
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")                 // splits accented letters apart
+        .replace(/[̀-ͯ]/g, ""); // removes the accent marks
+    }
+
+    function matchesQuery(name, q) {
+      return normalise(name)
+        .split(/\s+/)
+        .some((word) => word.startsWith(q));
+    }
+
+    function format(totalSeconds) {
+      const m = Math.floor(totalSeconds / 60);
+      const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+      return m + ":" + s;
+    }
+
+    // Drop the eleven shirts onto the pitch at their formation positions.
+    function buildPitch() {
+      XI.players.forEach((p, i) => {
+        const spot = document.createElement("div");
+        spot.className = "spot" + (p.given ? " given" : "");
+        spot.id = "spot-" + i;
+        spot.style.left = p.x + "%";
+        spot.style.top = p.y + "%";
+        spot.innerHTML =
+          '<div class="shirt">' + (p.given ? "" : p.pos) + '</div>' +
+          '<div class="spot-name">' + (p.given ? p.short : "") + '</div>';
+        pitchEl.appendChild(spot);
+      });
+      renderScore();
+    }
+
+    function renderScore() {
+      foundLabel.textContent = found.size + " of " + TO_FIND;
+    }
+
+    // Put a name on a shirt.
+    function fillSpot(i, how) {
+      const p = XI.players[i];
+      const spot = document.getElementById("spot-" + i);
+      spot.classList.add(how);                 // "found" or "missed"
+      spot.querySelector(".shirt").textContent = "";
+      spot.querySelector(".spot-name").textContent = p.short;
+      if (how === "found") {
+        found.add(i);
+        renderScore();
+        if (found.size === TO_FIND) finish();
+      }
+    }
+
+    let wrongTimer;
+    function flashWrong() {
+      clearTimeout(wrongTimer);
+      queryEl.classList.remove("wrong");
+      void queryEl.offsetWidth;      // restart the animation if it's mid-shake
+      queryEl.classList.add("wrong");
+      wrongTimer = setTimeout(() => queryEl.classList.remove("wrong"), 2500);
+    }
+
+    function renderQuery() {
+      qtextEl.textContent = query;
+      renderDropdown();
+    }
+
+    function renderDropdown() {
+      const q = normalise(query);
+      dropdownEl.innerHTML = "";
+
+      if (!q || finished) { dropdownEl.classList.remove("show"); return; }
+
+      const matches = DATABASE.filter((name) => matchesQuery(name, q));
+
+      if (matches.length === 0) {
+        dropdownEl.innerHTML = '<li class="empty">No players found</li>';
+      } else {
+        matches.slice(0, 6).forEach((name) => {
+          const li = document.createElement("li");
+          li.textContent = name;
+          if (guessed.has(name)) li.classList.add("spent");
+          li.addEventListener("click", () => pickPlayer(name));
+          dropdownEl.appendChild(li);
+        });
+      }
+      dropdownEl.classList.add("show");
+    }
+
+    // ---- Build the on-screen keyboard ----
+    const KEY_ROWS = [
+      ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+      ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+      ["space", "z", "x", "c", "v", "b", "n", "m", "del"],
+    ];
+    function buildKeyboard() {
+      keyboardEl.innerHTML = "";
+      KEY_ROWS.forEach((row, i) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "kb-row";
+        if (i === 1) rowEl.classList.add("indent");
+        row.forEach((k) => {
+          const key = document.createElement("div");
+          key.className = "key";
+          if (k === "del") {
+            key.classList.add("special", "wide", "icon");
+            key.setAttribute("aria-label", "Delete");
+            key.innerHTML = '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6H10L4 12l6 6h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/><line x1="14" y1="10" x2="18" y2="14"/><line x1="18" y1="10" x2="14" y2="14"/></svg>';
+          }
+          else if (k === "space") { key.classList.add("special", "spacebar"); key.textContent = "space"; }
+          else { key.textContent = k; }
+          key.addEventListener("pointerdown", (e) => { e.preventDefault(); pressKey(k); });
+          rowEl.appendChild(key);
+        });
+        keyboardEl.appendChild(rowEl);
+      });
+    }
+    function pressKey(k) {
+      if (finished) return;
+      if (k === "del") query = query.slice(0, -1);
+      else if (k === "space") { if (query && !query.endsWith(" ")) query += " "; }
+      else if (query.length < 24) query += k;
+      renderQuery();
+    }
+
+    // The player picked a name. If they're in the XI and still missing,
+    // the name drops onto their own shirt — no need to pick the spot first.
+    function pickPlayer(name) {
+      if (finished) return;
+
+      const i = XI.players.findIndex((p, idx) => p.name === name && !p.given && !found.has(idx));
+      if (i !== -1) {
+        fillSpot(i, "found");
+      } else {
+        flashWrong();          // not in this XI, or already on the pitch
+      }
+      guessed.add(name);
+
+      query = "";
+      renderQuery();
+    }
+
+    function loop() {
+      timerEl.textContent = format((performance.now() - startTime) / 1000);
+    }
+
+    // Called when all the missing names are in.
+    function finish() {
+      finished = true;
+      clearInterval(tickHandle);
+      const seconds = (performance.now() - startTime) / 1000;
+      timerEl.textContent = format(seconds);
+
+      query = "";
+      qtextEl.textContent = "";
+      dropdownEl.classList.remove("show");
+
+      document.getElementById("modalLineup").textContent = XI.title + " — " + XI.subtitle;
+      document.getElementById("statFound").textContent = TO_FIND + "/" + TO_FIND;
+      document.getElementById("statTime").textContent = format(seconds);
+
+      // small pause so the player sees the last shirt fill before the pop-up
+      setTimeout(() => overlayEl.classList.add("show"), 1200);
+    }
+
+    // ---- Set up the game (runs once when the page loads) ----
+    found = new Set();
+    guessed = new Set();
+    finished = false;
+
+    document.getElementById("title").textContent = XI.title;
+    document.getElementById("subtitle").textContent = XI.subtitle;
+    buildPitch();
+
+    startTime = performance.now();
+    tickHandle = setInterval(loop, 100);
+
+    // Shrink the title font until it fits on a single line at any phone width.
+    function fitTitle() {
+      const el = document.getElementById("title");
+      let size = 25;
+      el.style.fontSize = size + "px";
+      while (el.scrollWidth > el.clientWidth && size > 9) {
+        size -= 0.5;
+        el.style.fontSize = size + "px";
+      }
+    }
+
+    buildKeyboard();
+    renderQuery();
+    fitTitle();
+    window.addEventListener("resize", fitTitle);
+    // re-fit once Bebas Neue has actually loaded (its metrics differ from the fallback)
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+  </script>
+</body>
+</html>

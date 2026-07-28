@@ -284,7 +284,6 @@
     <section class="games">
       <div class="section-label">Today's Games</div>
 
-      <!-- Only Top Five is built; the rest are placeholders matching the design -->
       <a class="game-card" href="top-five.html">
         <div class="gc-text">
           <div class="gc-name">Top Five</div>
@@ -293,29 +292,29 @@
         <span class="gc-action play">Play</span>
       </a>
 
-      <div class="game-card" data-soon>
+      <a class="game-card" href="tic-tac-toe.html">
         <div class="gc-text">
           <div class="gc-name">Tic Tac Toe</div>
           <div class="gc-sub">Club × nationality grid</div>
         </div>
-        <span class="gc-action status"><span class="status-num">7/9</span><span class="status-label">Done</span></span>
-      </div>
+        <span class="gc-action play">Play</span>
+      </a>
 
-      <div class="game-card" data-soon>
+      <a class="game-card" href="missing-xi.html">
         <div class="gc-text">
           <div class="gc-name">Missing XI</div>
           <div class="gc-sub">Complete the lineup</div>
         </div>
         <span class="gc-action play">Play</span>
-      </div>
+      </a>
 
-      <div class="game-card" data-soon>
+      <a class="game-card" href="football-list.html">
         <div class="gc-text">
           <div class="gc-name">Football List</div>
           <div class="gc-sub">60 seconds, name them all</div>
         </div>
-        <span class="gc-action status"><span class="status-num">23</span><span class="status-label">Done</span></span>
-      </div>
+        <span class="gc-action play">Play</span>
+      </a>
 
       <a class="game-card" href="career-path.html">
         <div class="gc-text">
@@ -346,8 +345,6 @@
     </section>
   </main>
 
-  <div class="toast" id="toast">Coming soon</div>
-
   <script>
     // Show today's real date, e.g. "Thursday 16 July"
     (function () {
@@ -356,17 +353,6 @@
       var date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
       document.getElementById('date').textContent = day + ' ' + date;
     })();
-
-    // Games that aren't built yet give a gentle nudge instead of a dead tap.
-    var toast = document.getElementById('toast');
-    var toastTimer;
-    document.querySelectorAll('[data-soon]').forEach(function (card) {
-      card.addEventListener('click', function () {
-        toast.classList.add('show');
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 1400);
-      });
-    });
   </script>
 </body>
 </html>
