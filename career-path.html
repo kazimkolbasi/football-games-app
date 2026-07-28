@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover lets the game fill the whole screen, under the notch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Fixture — Career Path</title>
+
+  <!-- Make it launch fullscreen like an app when added to the home screen -->
+  <meta name="theme-color" content="#0b3d2e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fixture" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Self-hosted brand fonts: Bebas Neue (display) + Inter (body) -->
+  <link rel="stylesheet" href="fonts.css" />
+  <style>
+    /* ---------- Fixture design system (kept in sync with index.html) ---------- */
+    :root {
+      --pitch: #0b3d2e;             /* base */
+      --pitch-dark: #072a20;        /* deeper end of the background gradient */
+      --cream: #f2efe6;             /* all text */
+      --gold: #c68a2e;              /* the single accent */
+      --text-dark: #0b3d2e;         /* text sitting on top of gold or cream */
+
+      /* rows */
+      --row-empty: rgba(255, 255, 255, 0.05);
+      --row-solved: rgba(198, 138, 46, 0.14);
+      --row-border: rgba(242, 239, 230, 0.16);
+
+      --display: 'Bebas Neue', 'Arial Narrow', sans-serif;
+      --body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    /* Lock the page to the screen: no scrolling, no rubber-band bounce. */
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--pitch-dark);   /* paints the safe-area regions green, not white */
+    }
+    body {
+      margin: 0;
+      position: fixed;
+      inset: 0;
+      font-family: var(--body);
+      background: linear-gradient(160deg, var(--pitch), var(--pitch-dark));
+      color: var(--cream);
+      display: flex;
+      justify-content: center;
+      /* notch up top; keyboard sits just above the home bar at the bottom */
+      padding: max(10px, env(safe-area-inset-top)) 14px max(8px, calc(env(safe-area-inset-bottom) - 20px));
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;   /* no double-tap zoom */
+    }
+
+    /* The game fills the screen height and shares it out so it fits with no scroll. */
+    .game {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    header { margin-bottom: 0; flex: 0 0 auto; }
+
+    /* gold pill naming the game, sits next to the back chevron */
+    .badge {
+      background: var(--gold);
+      color: var(--text-dark);
+      font-family: var(--body);
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: var(--display);
+      font-size: 25px;
+      font-weight: 400;          /* Bebas has one weight — never fake-bold it */
+      letter-spacing: 0.5px;
+      line-height: 1.1;
+      margin: 10px 0 12px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    /* ---------- Timer (right end of the top bar) ---------- */
+    .timer {
+      margin-left: auto;
+      font-family: var(--display);
+      font-variant-numeric: tabular-nums;
+      font-size: 27px;
+      line-height: 1;
+      color: var(--gold);
+      letter-spacing: 1px;
+    }
+
+    /* ---------- Column headers ---------- */
+    .col-head {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 4px 5px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      opacity: 0.55;
+      flex: 0 0 auto;
+    }
+    .col-head .years-head { padding-right: 4px; }
+
+    /* ---------- Top bar: back chevron + game badge + timer ---------- */
+    .topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 2px 2px;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--cream);
+      cursor: pointer;
+      padding: 4px 2px;
+      display: flex;
+      align-items: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .back-btn:active { opacity: 0.55; }
+
+    /* ---------- The career timeline: one row per club ---------- */
+    .path {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+      flex: 1 1 auto;    /* the rows absorb the leftover screen height */
+      min-height: 0;
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--row-empty);
+      border: 1.5px solid var(--row-border);
+      border-radius: 11px;
+      padding: 3px 14px;
+      min-height: 30px;
+      flex: 1 1 0;       /* each row shares the space equally */
+      transition: background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease;
+      opacity: 0.4;      /* still hidden */
+    }
+    /* a club that has been revealed */
+    .step.shown {
+      opacity: 1;
+      animation: pop 0.3s ease;
+    }
+    /* once the player is guessed (or given away) the whole path glows gold */
+    .step.done {
+      background: var(--row-solved);
+      border-color: var(--gold);
+    }
+    @keyframes pop {
+      0% { transform: scale(0.9); }
+      60% { transform: scale(1.03); }
+      100% { transform: scale(1.0); }
+    }
+
+    /* step number: muted until the path is finished, then gold */
+    .step-num {
+      flex: 0 0 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(242, 239, 230, 0.12);
+      color: var(--cream);
+      font-family: var(--display);
+      font-size: 15px;
+      line-height: 1;
+      padding-top: 2px;      /* Bebas sits high in its box */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.25s ease, color 0.25s ease;
+    }
+    .step.done .step-num { background: var(--gold); color: var(--text-dark); }
+
+    /* left column: club name (dots until the club is revealed) */
+    .step-club {
+      font-size: 16px;
+      font-weight: 600;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .step-club.hidden-club { color: rgba(242, 239, 230, 0.45); letter-spacing: 3px; }
+
+    /* right column: the years at that club */
+    .step-years {
+      flex: 0 0 auto;
+      font-family: var(--display);
+      font-variant-numeric: tabular-nums;
+      font-size: 17px;
+      color: rgba(242, 239, 230, 0.75);
+      min-width: 78px;
+      text-align: right;
+      letter-spacing: 0.4px;
+      transition: color 0.25s ease;
+    }
+    .step.done .step-years { color: var(--gold); }
+
+    /* ---------- Guesses left: six pips ---------- */
+    .tries {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 0 4px;
+    }
+    .pips { display: flex; gap: 6px; }
+    .pip {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      border: 1.5px solid var(--gold);
+      transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+    }
+    /* a used-up guess burns out */
+    .pip.used { background: none; border-color: rgba(242, 239, 230, 0.25); opacity: 0.6; }
+    .tries-label {
+      margin-left: auto;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: rgba(242, 239, 230, 0.55);
+    }
+
+    /* ---------- Search box + dropdown ---------- */
+    .search-wrap { position: relative; flex: 0 0 auto; }
+
+    /* The typed-text bar — display only. The phone's native keyboard never
+       opens, because there is no real <input> to tap into. */
+    .query {
+      width: 100%;
+      min-height: 46px;
+      padding: 11px 14px;
+      background: var(--cream);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      color: var(--text-dark);
+      font-size: 17px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .qtext { white-space: nowrap; overflow: hidden; text-transform: uppercase; }
+    .qtext:empty::before { content: "Tap letters to guess the player…"; color: #8b9490; font-weight: 500; text-transform: none; }
+    .caret {
+      width: 2px; height: 20px;
+      background: var(--pitch);
+      margin-left: 2px;
+      animation: blink 1s steps(1) infinite;
+    }
+    .qtext:empty + .caret { display: none; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* wrong pick: a quick shake, plus a red outline that fades out over ~2.5s */
+    .query.wrong {
+      animation: shake 0.4s ease, redfade 2.5s ease forwards;
+    }
+
+    /* ---------- Built-in on-screen keyboard ---------- */
+    .keyboard {
+      flex: 0 0 auto;
+      margin-top: 10px;
+      padding: 0 3px;                 /* keys float directly on the background */
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      user-select: none;
+    }
+    .kb-row { display: flex; gap: 6px; justify-content: center; }
+    .kb-row.indent { padding: 0 5%; }
+    .key {
+      flex: 1;
+      text-align: center;
+      background: var(--cream);
+      color: var(--text-dark);
+      border-radius: 9px;
+      padding: 16px 0;
+      font-size: 18px;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 1.5px 0 rgba(0, 0, 0, 0.3);   /* subtle key depth */
+      transition: background 0.08s ease, transform 0.08s ease;
+    }
+    .key:active { background: var(--gold); transform: scale(0.92); }
+    /* space + delete are the same white keys, just wider (like the reference) */
+    .key.special { font-size: 12px; display: flex; align-items: center; justify-content: center; }
+    .key.special:active { background: var(--gold); transform: scale(0.95); }
+    /* space + delete equal width, so Z–M align exactly under the row above */
+    .key.wide { flex: 1.5; }
+    .key.spacebar { flex: 1.5; }
+    .key.icon { display: flex; align-items: center; justify-content: center; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(6px); }
+    }
+    @keyframes redfade {
+      0%, 55% { box-shadow: 0 0 0 3px #e5484d; }        /* hold red... */
+      100% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0); } /* ...then fade */
+    }
+
+    /* Suggestions open UPWARD (above the box) so on a phone they land in the
+       visible strip above the keyboard instead of hiding behind it. */
+    .dropdown {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      background: var(--cream);
+      border-radius: 12px;
+      overflow: hidden;
+      max-height: 260px;
+      overflow-y: auto;
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 8px);      /* sit just above the search box */
+      z-index: 50;
+      box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.28);
+    }
+    .dropdown.show { display: block; }
+    .dropdown li {
+      padding: 13px 16px;
+      color: var(--text-dark);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(11, 61, 46, 0.09);
+    }
+    .dropdown li:last-child { border-bottom: none; }
+    .dropdown li:hover, .dropdown li.active { background: rgba(198, 138, 46, 0.16); }
+    .dropdown .empty { color: #8b9490; font-weight: 500; cursor: default; }
+    /* a name already guessed is crossed out — tapping it costs you nothing */
+    .dropdown li.spent { color: #8b9490; text-decoration: line-through; }
+
+    /* ---------- Finish pop-up (modal) ---------- */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;   /* above the keyboard and dropdown */
+      background: rgba(7, 42, 32, 0.78);
+      backdrop-filter: blur(3px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+
+    .modal {
+      background: var(--cream);
+      color: var(--text-dark);
+      width: 100%;
+      max-width: 380px;
+      border-radius: 18px;
+      padding: 26px 22px;
+      text-align: center;
+      animation: pop 0.35s ease;
+    }
+    .modal h2 {
+      margin: 0 0 4px;
+      font-size: 32px;
+      font-family: var(--display);
+      font-weight: 400;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .modal .answer {
+      font-size: 15px;
+      color: rgba(11, 61, 46, 0.7);
+      margin: 0 0 20px;
+    }
+    .modal .answer strong {
+      display: block;
+      margin-top: 2px;
+      color: var(--text-dark);
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 30px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* two stat blocks: guesses used + time */
+    .stats {
+      display: flex;
+      gap: 12px;
+    }
+    .stat {
+      flex: 1;
+      background: rgba(11, 61, 46, 0.06);
+      border-radius: 14px;
+      padding: 14px 8px;
+    }
+    .stat-num {
+      display: block;
+      font-family: var(--display);
+      font-weight: 400;
+      font-size: 34px;
+      line-height: 1;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label {
+      display: block;
+      margin-top: 5px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: rgba(11, 61, 46, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <div class="topbar">
+      <a class="back-btn" id="backBtn" href="index.html" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </a>
+      <span class="badge">Career Path</span>
+      <span class="timer" id="timer">0:00</span>
+    </div>
+
+    <header>
+      <h1 id="title">Guess the Player</h1>
+    </header>
+
+    <div class="col-head">
+      <span>Club</span>
+      <span class="years-head">Years</span>
+    </div>
+
+    <!-- The six club rows get built by the script below -->
+    <div class="path" id="path"></div>
+
+    <!-- One pip per guess; they burn out as you use them -->
+    <div class="tries">
+      <div class="pips" id="pips"></div>
+      <span class="tries-label" id="triesLabel">6 guesses left</span>
+    </div>
+
+    <div class="search-wrap">
+      <ul class="dropdown" id="dropdown"></ul>
+      <div class="query" id="query"><span class="qtext" id="qtext"></span><span class="caret"></span></div>
+    </div>
+
+    <!-- Built-in keyboard — keys are built by the script below -->
+    <div class="keyboard" id="keyboard"></div>
+  </main>
+
+  <!-- The finish pop-up, hidden until the round ends -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h2 id="resultTitle">Correct!</h2>
+      <p class="answer">The player was<strong id="answerName"></strong></p>
+      <div class="stats">
+        <div class="stat"><span class="stat-num" id="statGuesses">1</span><span class="stat-label">Guesses</span></div>
+        <div class="stat"><span class="stat-num" id="statTime">0:00</span><span class="stat-label">Time</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================
+    //  THE PUZZLES
+    //  Each player has six clubs in the order they played for them.
+    //  "(loan)" is marked where the spell was a loan, so overlapping
+    //  years still read correctly.
+    // =========================================================
+    const PLAYERS = [
+      { name: "Zlatan Ibrahimović", clubs: [
+        ["Malmö FF", "1999–2001"], ["Ajax", "2001–2004"], ["Juventus", "2004–2006"],
+        ["Inter Milan", "2006–2009"], ["Barcelona", "2009–2010"], ["AC Milan", "2010–2012"] ] },
+
+      { name: "Didier Drogba", clubs: [
+        ["Le Mans", "1998–2002"], ["Guingamp", "2002–2003"], ["Marseille", "2003–2004"],
+        ["Chelsea", "2004–2012"], ["Shanghai Shenhua", "2012–2013"], ["Galatasaray", "2013–2014"] ] },
+
+      { name: "Luis Suárez", clubs: [
+        ["Nacional", "2005–2006"], ["Groningen", "2006–2007"], ["Ajax", "2007–2011"],
+        ["Liverpool", "2011–2014"], ["Barcelona", "2014–2020"], ["Atlético Madrid", "2020–2022"] ] },
+
+      { name: "Ángel Di María", clubs: [
+        ["Rosario Central", "2005–2007"], ["Benfica", "2007–2010"], ["Real Madrid", "2010–2014"],
+        ["Manchester United", "2014–2015"], ["Paris Saint-Germain", "2015–2022"], ["Juventus", "2022–2023"] ] },
+
+      { name: "Samuel Eto'o", clubs: [
+        ["Real Madrid", "1997–2000"], ["Mallorca", "2000–2004"], ["Barcelona", "2004–2009"],
+        ["Inter Milan", "2009–2011"], ["Anzhi Makhachkala", "2011–2013"], ["Chelsea", "2013–2014"] ] },
+
+      { name: "Wesley Sneijder", clubs: [
+        ["Ajax", "2002–2007"], ["Real Madrid", "2007–2009"], ["Inter Milan", "2009–2013"],
+        ["Galatasaray", "2013–2017"], ["Nice", "2017–2018"], ["Al-Gharafa", "2018–2019"] ] },
+
+      { name: "Carlos Tévez", clubs: [
+        ["Boca Juniors", "2001–2004"], ["Corinthians", "2005–2006"], ["West Ham United", "2006–2007"],
+        ["Manchester United", "2007–2009"], ["Manchester City", "2009–2013"], ["Juventus", "2013–2015"] ] },
+
+      { name: "Ronaldinho", clubs: [
+        ["Grêmio", "1998–2001"], ["Paris Saint-Germain", "2001–2003"], ["Barcelona", "2003–2008"],
+        ["AC Milan", "2008–2011"], ["Flamengo", "2011–2012"], ["Atlético Mineiro", "2012–2014"] ] },
+
+      { name: "Fernando Torres", clubs: [
+        ["Atlético Madrid", "2001–2007"], ["Liverpool", "2007–2011"], ["Chelsea", "2011–2014"],
+        ["AC Milan", "2014–2015"], ["Atlético Madrid", "2015–2018"], ["Sagan Tosu", "2018–2019"] ] },
+
+      { name: "Edinson Cavani", clubs: [
+        ["Danubio", "2005–2007"], ["Palermo", "2007–2010"], ["Napoli", "2010–2013"],
+        ["Paris Saint-Germain", "2013–2020"], ["Manchester United", "2020–2022"], ["Valencia", "2022–2023"] ] },
+
+      { name: "Radamel Falcao", clubs: [
+        ["River Plate", "2005–2009"], ["Porto", "2009–2011"], ["Atlético Madrid", "2011–2013"],
+        ["Monaco", "2013–2019"], ["Manchester United (loan)", "2014–2015"], ["Chelsea (loan)", "2015–2016"] ] },
+
+      { name: "James Rodríguez", clubs: [
+        ["Envigado", "2006–2008"], ["Banfield", "2008–2010"], ["Porto", "2010–2013"],
+        ["Monaco", "2013–2014"], ["Real Madrid", "2014–2020"], ["Bayern Munich (loan)", "2017–2019"] ] },
+
+      { name: "Romelu Lukaku", clubs: [
+        ["Anderlecht", "2009–2011"], ["Chelsea", "2011–2014"], ["West Bromwich Albion (loan)", "2012–2013"],
+        ["Everton", "2013–2017"], ["Manchester United", "2017–2019"], ["Inter Milan", "2019–2021"] ] },
+
+      { name: "Xherdan Shaqiri", clubs: [
+        ["Basel", "2009–2012"], ["Bayern Munich", "2012–2015"], ["Inter Milan", "2015"],
+        ["Stoke City", "2015–2018"], ["Liverpool", "2018–2021"], ["Lyon", "2021–2022"] ] },
+
+      { name: "Mario Balotelli", clubs: [
+        ["Lumezzane", "2006"], ["Inter Milan", "2007–2010"], ["Manchester City", "2010–2013"],
+        ["AC Milan", "2013–2014"], ["Liverpool", "2014–2016"], ["Nice", "2016–2019"] ] },
+    ];
+
+    // Famous names that are NOT the answer — they fill out the search list.
+    const DECOYS = [
+      "Cristiano Ronaldo", "Lionel Messi", "Robert Lewandowski", "Karim Benzema", "Raúl",
+      "Thierry Henry", "Ruud van Nistelrooy", "Thomas Müller", "Kylian Mbappé",
+      "Andriy Shevchenko", "Neymar", "Sergio Agüero", "Zinedine Zidane", "Wayne Rooney",
+      "Steven Gerrard", "Frank Lampard", "Xavi Hernández", "Andrés Iniesta", "Kaká",
+      "Alessandro Del Piero", "Francesco Totti", "Filippo Inzaghi", "David Villa",
+      "Arjen Robben", "Franck Ribéry", "Gareth Bale", "Luka Modrić", "Toni Kroos",
+      "Mohamed Salah", "Sadio Mané", "Erling Haaland", "Harry Kane", "Antoine Griezmann",
+      "Gonzalo Higuaín", "Eden Hazard", "Kevin De Bruyne", "Iker Casillas", "Sergio Ramos",
+      "Roberto Carlos", "Clarence Seedorf", "Dennis Bergkamp", "David Beckham",
+      "Nicolas Anelka", "Alexis Sánchez", "Hernán Crespo",
+    ];
+
+    // ---- Pick TODAY's player (same one all day, a new one tomorrow) ----
+    function dayNumber() {
+      const now = new Date();
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      const epoch = Date.UTC(2026, 0, 1);          // counting starts 1 Jan 2026
+      return Math.floor((today - epoch) / 86400000);
+    }
+    const TARGET = PLAYERS[((dayNumber() % PLAYERS.length) + PLAYERS.length) % PLAYERS.length];
+
+    // The searchable list: every puzzle player plus the decoys, A–Z, no repeats.
+    const DATABASE = (function () {
+      const names = new Set(PLAYERS.map((p) => p.name));
+      DECOYS.forEach((n) => names.add(n));
+      return [...names].sort((a, b) => a.localeCompare(b));
+    })();
+
+    const MAX_GUESSES = 6;
+
+    // ---- Grab the parts of the page we'll update ----
+    const pathEl      = document.getElementById("path");
+    const pipsEl      = document.getElementById("pips");
+    const triesLabel  = document.getElementById("triesLabel");
+    const timerEl     = document.getElementById("timer");
+    const queryEl     = document.getElementById("query");     // the typed-text bar
+    const qtextEl     = document.getElementById("qtext");     // the typed text itself
+    const keyboardEl  = document.getElementById("keyboard");
+    const dropdownEl  = document.getElementById("dropdown");
+    const overlayEl   = document.getElementById("overlay");
+
+    let query = "";      // what the player has typed on the built-in keyboard
+    let shown;           // how many clubs are currently visible (starts at 1)
+    let used;            // how many guesses have been spent
+    let guessed;         // a Set of names already tried, so they can't cost twice
+    let startTime;       // when the clock started
+    let tickHandle;      // the repeating timer
+    let finished;        // true once the round is over
+
+    // Turn "Raúl" or "  MÜLLER " into "raul" / "muller" for fair searching.
+    function normalise(text) {
+      return text
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")                 // splits accented letters apart
+        .replace(/[̀-ͯ]/g, ""); // removes the accent marks
+    }
+
+    // Google-style match: does ANY word (first name or surname) START with
+    // what was typed? Typing "n" -> Neymar, Nistelrooy; "de" -> De Bruyne.
+    function matchesQuery(name, q) {
+      return normalise(name)
+        .split(/\s+/)
+        .some((word) => word.startsWith(q));
+    }
+
+    // Show m:ss for a number of seconds (e.g. 0:23, 1:07).
+    function format(totalSeconds) {
+      const m = Math.floor(totalSeconds / 60);
+      const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+      return m + ":" + s;
+    }
+
+    // Build the six club rows — hidden ones show dots instead of the club.
+    function buildPath() {
+      pathEl.innerHTML = "";
+      TARGET.clubs.forEach((club, i) => {
+        const step = document.createElement("div");
+        step.className = "step";
+        step.id = "step-" + i;
+        step.innerHTML =
+          '<div class="step-num">' + (i + 1) + '</div>' +
+          '<div class="step-club hidden-club">• • •</div>' +
+          '<div class="step-years"></div>';
+        pathEl.appendChild(step);
+      });
+    }
+
+    // Reveal club number i (0-based).
+    function revealStep(i) {
+      const step = document.getElementById("step-" + i);
+      if (!step || step.classList.contains("shown")) return;
+      step.classList.add("shown");
+      const clubEl = step.querySelector(".step-club");
+      clubEl.classList.remove("hidden-club");
+      clubEl.textContent = TARGET.clubs[i][0];
+      step.querySelector(".step-years").textContent = TARGET.clubs[i][1];
+    }
+
+    // Build the six guess pips and keep them in step with the guesses used.
+    function buildPips() {
+      pipsEl.innerHTML = "";
+      for (let i = 0; i < MAX_GUESSES; i++) {
+        const pip = document.createElement("span");
+        pip.className = "pip";
+        pip.id = "pip-" + i;
+        pipsEl.appendChild(pip);
+      }
+    }
+    function renderTries() {
+      for (let i = 0; i < MAX_GUESSES; i++) {
+        document.getElementById("pip-" + i).classList.toggle("used", i < used);
+      }
+      const left = MAX_GUESSES - used;
+      triesLabel.textContent = left === 1 ? "1 guess left" : left + " guesses left";
+    }
+
+    // A wrong pick: shake the search box and flash a red outline that fades.
+    let wrongTimer;
+    function flashWrong() {
+      clearTimeout(wrongTimer);
+      queryEl.classList.remove("wrong");
+      void queryEl.offsetWidth;      // restart the animation if it's mid-shake
+      queryEl.classList.add("wrong");
+      wrongTimer = setTimeout(() => queryEl.classList.remove("wrong"), 2500);
+    }
+
+    // Show the typed text in the bar, then refresh the suggestions.
+    function renderQuery() {
+      qtextEl.textContent = query;
+      renderDropdown();
+    }
+
+    // ---- The suggestions dropdown (opens above the keyboard) ----
+    function renderDropdown() {
+      const q = normalise(query);
+      dropdownEl.innerHTML = "";
+
+      if (!q || finished) { dropdownEl.classList.remove("show"); return; }
+
+      const matches = DATABASE.filter((name) => matchesQuery(name, q));
+
+      if (matches.length === 0) {
+        dropdownEl.innerHTML = '<li class="empty">No players found</li>';
+      } else {
+        matches.slice(0, 6).forEach((name) => {
+          const li = document.createElement("li");
+          li.textContent = name;
+          if (guessed.has(name)) li.classList.add("spent");   // already tried
+          li.addEventListener("click", () => pickPlayer(name));
+          dropdownEl.appendChild(li);
+        });
+      }
+      dropdownEl.classList.add("show");
+    }
+
+    // ---- Build the on-screen keyboard ----
+    const KEY_ROWS = [
+      ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+      ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+      ["space", "z", "x", "c", "v", "b", "n", "m", "del"],
+    ];
+    function buildKeyboard() {
+      keyboardEl.innerHTML = "";
+      KEY_ROWS.forEach((row, i) => {
+        const rowEl = document.createElement("div");
+        rowEl.className = "kb-row";
+        if (i === 1) rowEl.classList.add("indent");
+        row.forEach((k) => {
+          const key = document.createElement("div");
+          key.className = "key";
+          if (k === "del") {
+            key.classList.add("special", "wide", "icon");
+            key.setAttribute("aria-label", "Delete");
+            key.innerHTML = '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6H10L4 12l6 6h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/><line x1="14" y1="10" x2="18" y2="14"/><line x1="18" y1="10" x2="14" y2="14"/></svg>';
+          }
+          else if (k === "space") { key.classList.add("special", "spacebar"); key.textContent = "space"; }
+          else { key.textContent = k; }
+          key.addEventListener("pointerdown", (e) => { e.preventDefault(); pressKey(k); });
+          rowEl.appendChild(key);
+        });
+        keyboardEl.appendChild(rowEl);
+      });
+    }
+    function pressKey(k) {
+      if (finished) return;
+      if (k === "del") query = query.slice(0, -1);
+      else if (k === "space") { if (query && !query.endsWith(" ")) query += " "; }
+      else if (query.length < 24) query += k;
+      renderQuery();
+    }
+
+    // The player picked a name from the list.
+    function pickPlayer(name) {
+      if (finished) return;
+
+      // Already tried this one — nudge, but don't burn a guess.
+      if (guessed.has(name)) {
+        flashWrong();
+        query = "";
+        renderQuery();
+        return;
+      }
+
+      guessed.add(name);
+
+      if (name === TARGET.name) {
+        used++;
+        renderTries();
+        finish(true);
+        return;
+      }
+
+      // Wrong: burn a guess and open up the next club.
+      used++;
+      renderTries();
+      flashWrong();
+      if (shown < TARGET.clubs.length) revealStep(shown++);
+
+      query = "";
+      renderQuery();
+
+      if (used >= MAX_GUESSES) finish(false);
+    }
+
+    // ---- The game loop: just the timer ----
+    function loop() {
+      timerEl.textContent = format((performance.now() - startTime) / 1000);
+    }
+
+    // Called when the round ends: stop the clock, show the whole path, pop up.
+    function finish(won) {
+      finished = true;
+      clearInterval(tickHandle);
+      const seconds = (performance.now() - startTime) / 1000;
+      timerEl.textContent = format(seconds);
+
+      // The full career is always shown at the end, win or lose.
+      TARGET.clubs.forEach((club, i) => {
+        revealStep(i);
+        document.getElementById("step-" + i).classList.add("done");
+      });
+
+      query = "";
+      qtextEl.textContent = "";
+      dropdownEl.classList.remove("show");
+
+      document.getElementById("resultTitle").textContent = won ? "Correct!" : "Out of guesses";
+      document.getElementById("answerName").textContent = TARGET.name;
+      document.getElementById("statGuesses").textContent = used + "/" + MAX_GUESSES;
+      document.getElementById("statTime").textContent = format(seconds);
+
+      // small pause so the player sees the path fill before the pop-up
+      setTimeout(() => overlayEl.classList.add("show"), 1200);
+    }
+
+    // ---- Set up the game (runs once when the page loads) ----
+    shown = 0;
+    used = 0;
+    guessed = new Set();
+    finished = false;
+
+    buildPath();
+    buildPips();
+    revealStep(shown++);      // the first club is free
+    renderTries();
+
+    startTime = performance.now();
+    tickHandle = setInterval(loop, 100);
+
+    // Shrink the title font until it fits on a single line at any phone width.
+    function fitTitle() {
+      const el = document.getElementById("title");
+      let size = 25;
+      el.style.fontSize = size + "px";
+      while (el.scrollWidth > el.clientWidth && size > 9) {
+        size -= 0.5;
+        el.style.fontSize = size + "px";
+      }
+    }
+
+    buildKeyboard();
+    renderQuery();
+    fitTitle();
+    window.addEventListener("resize", fitTitle);
+    // re-fit once Bebas Neue has actually loaded (its metrics differ from the fallback)
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+  </script>
+</body>
+</html>
